@@ -4,8 +4,7 @@
   <groupId>com.seminario.plugin</groupId>
   <artifactId>semi</artifactId>
   <name>semi</name>
-  <version>0.1 DEMO</version>
-  <url>http://www.example.com</url>
+  <version>1.0-2S-2025-1.20.1</version>
   <build>
     <pluginManagement>
       <plugins>
