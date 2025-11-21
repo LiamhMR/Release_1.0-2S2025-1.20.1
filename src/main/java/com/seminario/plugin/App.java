@@ -1,0 +1,256 @@
+package com.seminario.plugin;
+
+import org.bukkit.configuration.serialization.ConfigurationSerialization;
+import org.bukkit.plugin.java.JavaPlugin;
+
+import com.seminario.plugin.commands.SeminarioCommand;
+import com.seminario.plugin.config.ConfigManager;
+import com.seminario.plugin.listener.ChestportGUIListener;
+import com.seminario.plugin.listener.FireworkTriggerListener;
+import com.seminario.plugin.listener.HarryNPCListener;
+import com.seminario.plugin.listener.LobbyPlayerListener;
+import com.seminario.plugin.listener.PlayerEventListener;
+import com.seminario.plugin.listener.SQLEntryListener;
+import com.seminario.plugin.manager.FireworkManager;
+import com.seminario.plugin.manager.FixSlideManager;
+import com.seminario.plugin.manager.HarryNPCManager;
+import com.seminario.plugin.manager.LobbyManager;
+import com.seminario.plugin.manager.SQLDungeonManager;
+import com.seminario.plugin.manager.SlideManager;
+import com.seminario.plugin.manager.SlideShowManager;
+import com.seminario.plugin.manager.SpawnpointManager;
+import com.seminario.plugin.manager.SurveyManager;
+import com.seminario.plugin.model.MenuZone;
+import com.seminario.plugin.model.SQLDungeonWorld;
+import com.seminario.plugin.model.SQLLevel;
+import com.seminario.plugin.model.Slide;
+import com.seminario.plugin.model.Survey;
+
+/**
+ * Main plugin class for the Seminario Plugin
+ * Minecraft 1.20.1 Paper/Bukkit Plugin with WorldEdit integration
+ */
+public class App extends JavaPlugin {
+    
+    private ConfigManager configManager;
+    private SlideManager slideManager;
+    private SlideShowManager slideShowManager;
+    private FixSlideManager fixSlideManager;
+    private SQLDungeonManager sqlDungeonManager;
+    private SpawnpointManager spawnpointManager;
+    private LobbyManager lobbyManager;
+    private SurveyManager surveyManager;
+    private FireworkManager fireworkManager;
+    private HarryNPCManager harryNPCManager;
+    private PlayerEventListener playerEventListener;
+    private com.seminario.plugin.listener.PlayerJoinListener playerJoinListener;
+    
+    @Override
+    public void onEnable() {
+        // Plugin startup logic
+        getLogger().info("Seminario Plugin has been enabled!");
+        
+        // Check for WorldEdit dependency
+        if (getServer().getPluginManager().getPlugin("WorldEdit") == null) {
+            getLogger().warning("WorldEdit not found! Some features may not work properly.");
+        } else {
+            getLogger().info("WorldEdit integration enabled!");
+        }
+        
+        // Register serializable classes for YAML storage
+        ConfigurationSerialization.registerClass(MenuZone.class);
+        ConfigurationSerialization.registerClass(Slide.class);
+        ConfigurationSerialization.registerClass(SQLDungeonWorld.class);
+        ConfigurationSerialization.registerClass(SQLLevel.class);
+        ConfigurationSerialization.registerClass(Survey.class);
+        
+        // Initialize managers
+        configManager = new ConfigManager(this);
+        slideManager = new SlideManager(this);
+        slideShowManager = new SlideShowManager(this, configManager, slideManager);
+        fixSlideManager = new FixSlideManager(this, configManager, slideManager);
+        sqlDungeonManager = new SQLDungeonManager(this, configManager);
+        spawnpointManager = new SpawnpointManager(this, configManager);
+        surveyManager = new SurveyManager(this);
+        lobbyManager = new LobbyManager(this, configManager, spawnpointManager, surveyManager);
+        fireworkManager = new FireworkManager(this);
+        harryNPCManager = new HarryNPCManager(this);
+        
+        // Clear cached slides with old format (12x9) to force regeneration to new format (16x11)
+        getLogger().info("Clearing slide cache to force regeneration for 16x11 format...");
+        slideManager.clearAllSlideCache();
+        getLogger().info("Slide cache cleared. Slides will regenerate in new 16x11 format on first view.");
+        
+        // Initialize FIXSLIDE presentations
+        getLogger().info("Initializing FIXSLIDE presentations...");
+        fixSlideManager.initializeAllFixSlides();
+        
+        // Initialize SQL Dungeon system
+        if (!sqlDungeonManager.initialize()) {
+            getLogger().warning("SQL Dungeon system failed to initialize - some features may not work");
+        }
+        
+        // Spawn all Harry NPCs after worlds are loaded
+        getLogger().info("Spawning Harry NPCs...");
+        harryNPCManager.spawnAllNPCs();
+        
+        // Register event listeners
+        playerEventListener = new PlayerEventListener(configManager, slideShowManager, fixSlideManager, this);
+        getServer().getPluginManager().registerEvents(playerEventListener, this);
+        
+        // Register chestport GUI listener
+        getServer().getPluginManager().registerEvents(new ChestportGUIListener(), this);
+        
+        // Register SQL entry listener
+        getServer().getPluginManager().registerEvents(new SQLEntryListener(sqlDungeonManager), this);
+        
+        // Register SQL world listener for auto-start functionality
+        getServer().getPluginManager().registerEvents(new com.seminario.plugin.listeners.SQLWorldListener(sqlDungeonManager), this);
+        
+        // Register SQL death listener for checkpoint respawn and heart loss on death
+        getServer().getPluginManager().registerEvents(new com.seminario.plugin.listener.SQLDeathListener(sqlDungeonManager, this), this);
+
+        // Register SQL player listener for SuperJump and exit item handling
+        getServer().getPluginManager().registerEvents(new com.seminario.plugin.listener.SQLPlayerListener(sqlDungeonManager, spawnpointManager), this);
+        
+        // Register laboratory listener for SQL experimentation
+        com.seminario.plugin.listener.LaboratoryListener laboratoryListener = new com.seminario.plugin.listener.LaboratoryListener(configManager, sqlDungeonManager);
+        getServer().getPluginManager().registerEvents(laboratoryListener, this);
+        
+        // Connect laboratory listener with player event listener
+        playerEventListener.setLaboratoryListener(laboratoryListener);
+        
+        // Register player join listener for spawnpoint welcome (always teleports to spawn)
+        playerJoinListener = new com.seminario.plugin.listener.PlayerJoinListener(spawnpointManager, lobbyManager, this);
+        getServer().getPluginManager().registerEvents(playerJoinListener, this);
+        
+        // Register world change listener for lobby inventory on world switch
+        getServer().getPluginManager().registerEvents(new com.seminario.plugin.listener.WorldChangeListener(this, lobbyManager), this);
+        
+        // Register lobby player listener for lobby item interactions
+        getServer().getPluginManager().registerEvents(new LobbyPlayerListener(lobbyManager), this);
+        
+        // Register survey listener for survey interactions
+        getServer().getPluginManager().registerEvents(new com.seminario.plugin.listener.SurveyListener(surveyManager), this);
+        
+        // Register post-test listener for post-test item interactions
+        getServer().getPluginManager().registerEvents(new com.seminario.plugin.listener.PostTestListener(surveyManager), this);
+        
+        // Register firework trigger listener for firework activation
+        getServer().getPluginManager().registerEvents(new FireworkTriggerListener(fireworkManager), this);
+        
+        // Register Harry NPC listener for NPC interactions
+        getServer().getPluginManager().registerEvents(new HarryNPCListener(harryNPCManager), this);
+        
+        // Register commands
+        SeminarioCommand seminarioCommand = new SeminarioCommand(configManager, slideManager, sqlDungeonManager, spawnpointManager, lobbyManager, surveyManager, fireworkManager, harryNPCManager);
+        seminarioCommand.setFixSlideManager(fixSlideManager); // Connect FixSlideManager to commands
+        var smCommand = getCommand("sm");
+        if (smCommand != null) {
+            smCommand.setExecutor(seminarioCommand);
+            smCommand.setTabCompleter(seminarioCommand);
+        } else {
+            getLogger().severe("Failed to register /sm command!");
+        }
+        
+        getLogger().info("Menu zones and slideshow system initialized successfully!");
+    }
+    
+    public SpawnpointManager getSpawnpointManager() {
+        return spawnpointManager;
+    }
+    
+    public LobbyManager getLobbyManager() {
+        return lobbyManager;
+    }
+    
+    public SurveyManager getSurveyManager() {
+        return surveyManager;
+    }
+    
+    public FixSlideManager getFixSlideManager() {
+        return fixSlideManager;
+    }
+    
+    @Override
+    public void onDisable() {
+        // Plugin shutdown logic
+        getLogger().info("Seminario Plugin has been disabled!");
+        
+        // Despawn all Harry NPCs before shutdown
+        if (harryNPCManager != null) {
+            getLogger().info("Despawning Harry NPCs...");
+            harryNPCManager.despawnAllNPCs();
+        }
+        
+        // Save configuration before shutdown
+        if (configManager != null) {
+            configManager.saveConfig();
+        }
+        
+        if (slideManager != null) {
+            slideManager.saveSlides();
+        }
+        
+        // Clean up active slideshow sessions and screens
+        if (slideShowManager != null) {
+            getLogger().info("Cleaned up " + slideShowManager.getActiveSessionCount() + " active slideshow sessions");
+        }
+        
+        // Clean up FIXSLIDE presentations
+        if (fixSlideManager != null) {
+            fixSlideManager.cleanupAll();
+            getLogger().info("Cleaned up " + fixSlideManager.getActiveFixSlideCount() + " FIXSLIDE presentations");
+        }
+        
+        // Clean up SQL Dungeon system
+        if (sqlDungeonManager != null) {
+            sqlDungeonManager.shutdown();
+        }
+        
+        // Clean up Lobby system
+        if (lobbyManager != null) {
+            lobbyManager.shutdown();
+        }
+        
+        // Clean up Survey system
+        if (surveyManager != null) {
+            surveyManager.shutdown();
+        }
+        
+        // Clean up all slide screens
+        com.seminario.plugin.util.SlideScreenRenderer.cleanupAllScreens();
+    }
+    
+    /**
+     * Get the configuration manager instance
+     * @return ConfigManager instance
+     */
+    public ConfigManager getConfigManager() {
+        return configManager;
+    }
+    
+    /**
+     * Get the slide manager instance
+     * @return SlideManager instance
+     */
+    public SlideManager getSlideManager() {
+        return slideManager;
+    }
+    
+    /**
+     * Get the slideshow manager instance
+     * @return SlideShowManager instance
+     */
+    public SlideShowManager getSlideShowManager() {
+        return slideShowManager;
+    }
+    
+    /**
+     * Get the player event listener instance
+     * @return PlayerEventListener instance
+     */
+    public PlayerEventListener getPlayerEventListener() {
+        return playerEventListener;
+    }
+}

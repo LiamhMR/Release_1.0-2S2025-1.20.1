@@ -1,0 +1,128 @@
+name: SeminarioPlugin
+version: '1.0-2S-2025-1.20.1'
+main: com.seminario.plugin.App
+api-version: '1.20'
+author: Leandro Maureira López and contributor; Camilo Galvez.
+description: Minecraft Plugin for the seminar project, for educational use purpose focus on build a game experience for teaching SQL through interactive dungeons, menu zones, slides, surveys, fireworks and NPCs./ Plugin de Minecraft para el proyecto de seminario con fines educativos, centrado en crear una experiencia de juego para enseñar SQL mediante mazmorras interactivas, zonas de menú, diapositivas, encuestas, fuegos artificiales y NPCs.
+
+commands:
+  sm:
+    description: Main command for Seminario plugin menu zones, slides, chestports, SQL dungeons, surveys, fireworks, Harry NPCs and database inspection
+    usage: |
+      /sm create menuzone <nombre> - Create a regular menu zone
+      /sm create fixslide <nombre_fixslide> <nombre_zona_slide> - Create a fixed slide presentation linked to a SLIDE zone
+      /sm create SQLDUNGEON <mundo> - Create SQL dungeon
+      /sm remove <name> - Remove a menu zone
+      /sm list - List all menu zones
+      /sm info [name] - Show info about menu zones
+      /sm set menutype <name> <type> - Set menu zone type
+      /sm slide <name> <add|edit|delete|fix|posfix|list> [args] - Manage slides and presentation settings
+      /sm fixslide list - List all FIXSLIDE zones
+      /sm fixslide <name> <fix|nextbutton|backbutton|+X|-X|+Z|-Z> - Configure fixed slide presentations
+      /sm disabled <name> - Toggle zone enabled/disabled state
+      /sm sql <here|schema|bank|info|repair> [args] - SQL dungeon commands
+      /sm survey <create|add|edit|start|list|info|stats> [args] - Manage surveys
+      /sm defaultsurvey <nombre_encuesta> - Set default survey for post-test at current location
+      /sm createfire <color> [color2] [color3] - Create firework trigger at current location
+      /sm createcreeperfire <color> [color2] [color3] - Create creeper-shaped firework trigger
+      /sm firework list - List all firework triggers
+      /sm firework remove <id> - Remove a firework trigger
+      /sm newharry <nombre> - Create a Harry NPC teacher at current location
+      /sm harry <nombre> addLine <texto> - Add dialogue line to Harry NPC
+      /sm harry <nombre> editLine <numero> <texto> - Edit specific line of Harry NPC
+      /sm harry <nombre> lines - View all dialogue lines of Harry NPC
+      /sm harry <nombre> remove - Remove a Harry NPC
+      /sm harry <nombre> reset - Reset Harry NPC and clean residual holograms
+      /sm lobby <inventory> - Lobby commands
+      /sm spawnpoint set - Set server spawnpoint
+      /sm db table <table_name> - Inspect database table contents
+      /sm reload - Reload plugin configuration
+    permission: seminario.admin
+    aliases: [seminario]
+    tab-complete: true
+
+permissions:
+  seminario.admin:
+    description: Allows full access to seminario plugin commands
+    default: op
+  seminario.menuzone.create:
+    description: Allows creating menu zones
+    default: op
+  seminario.menuzone.remove:
+    description: Allows removing menu zones
+    default: op
+  seminario.menuzone.list:
+    description: Allows listing menu zones
+    default: op
+  seminario.menuzone.set:
+    description: Allows setting menu zone properties (type, etc.)
+    default: op
+  seminario.slide.manage:
+    description: Allows managing slides (add, edit, delete)
+    default: op
+  seminario.fixslide.create:
+    description: Allows creating fixed slide presentations
+    default: op
+  seminario.fixslide.configure:
+    description: Allows configuring fixed slide settings (position, buttons, direction)
+    default: op
+  seminario.zone.disable:
+    description: Allows enabling/disabling menu zones
+    default: op
+  seminario.chestport.edit:
+    description: Allows editing chestport teleport locations
+    default: op
+  seminario.chestport.use:
+    description: Allows using chestport teleportation
+    default: true
+  seminario.sql.admin:
+    description: Allows full SQL dungeon administration (create worlds, manage levels)
+    default: op
+  seminario.sql.create:
+    description: Allows creating SQL dungeon worlds
+    default: op
+  seminario.sql.level.manage:
+    description: Allows managing SQL levels (add, edit, delete)
+    default: op
+  seminario.sql.entry.set:
+    description: Allows setting SQL entry points for levels
+    default: op
+  seminario.sql.schema.view:
+    description: Allows viewing database schema information
+    default: true
+  seminario.sql.play:
+    description: Allows playing SQL dungeons and challenges
+    default: true
+  seminario.sql.bank.info:
+    description: Allows viewing SQL challenge bank information
+    default: true
+  seminario.sql.bank.regenerate:
+    description: Allows regenerating SQL challenges for levels
+    default: op
+  seminario.sql.repair:
+    description: Allows repairing SQL dungeons with missing challenges
+    default: op
+  seminario.sql.info:
+    description: Allows viewing SQL dungeon and player progress information
+    default: true
+  seminario.survey.admin:
+    description: Allows full survey administration (create, edit, manage)
+    default: op
+  seminario.survey.create:
+    description: Allows creating surveys
+    default: op
+  seminario.survey.edit:
+    description: Allows editing surveys and questions
+    default: op
+  seminario.survey.start:
+    description: Allows starting and taking surveys
+    default: true
+  seminario.survey.view:
+    description: Allows viewing survey information and statistics
+    default: true
+  seminario.lobby.inventory:
+    description: Allows getting lobby inventory items
+    default: true
+
+depend: []
+softdepend: [WorldEdit]
