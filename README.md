@@ -198,6 +198,40 @@ Las menuZones son localizaciones que detectan cuando el jugador se ubica dentro 
 
 ---
 
+### Uso de Imágenes Locales (Opcional)
+
+**Concepto:** El plugin puede cargar imágenes desde archivos locales en lugar de descargarlas desde URLs, lo que mejora el rendimiento y permite trabajar sin conexión.
+
+**Estructura de carpetas:**
+```
+plugins/SeminarioPlugin/slides_src/
+├── <nombre_zona_slide>/
+│   ├── 1.png
+│   ├── 2.png
+│   ├── 3.png
+│   └── ...
+```
+
+**Funcionamiento:**
+1. El plugin verifica primero si existe una imagen local en `slides_src/<nombre_zona>/<numero_diapositiva>.png`
+2. Si existe, la carga directamente sin descargar desde la URL
+3. Si no existe, descarga la imagen desde la URL configurada
+
+**Ejemplo:**
+- Para la zona de slides `tutorial_sql` con 5 diapositivas:
+  - Crear carpeta: `plugins/SeminarioPlugin/slides_src/tutorial_sql/`
+  - Colocar: `1.png`, `2.png`, `3.png`, `4.png`, `5.png`
+  
+**Ventajas:**
+- ✅ Carga más rápida de diapositivas
+- ✅ No requiere conexión a internet
+- ✅ Mayor control sobre las imágenes
+- ✅ Retrocompatibilidad: si no hay archivo local, descarga desde URL
+
+**Nota:** Las imágenes deben estar en formato PNG. El plugin las redimensionará automáticamente al tamaño adecuado.
+
+---
+
 ### FixSlides
 
 **Concepto:** Los fixslides son un tipo extendido de slide donde la presentación se muestra permanentemente en una ubicación fija, sin necesidad de que un jugador active la zona.

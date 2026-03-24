@@ -20,6 +20,7 @@ public class SlideMapRenderer4x4 {
     
     /**
      * Create 176 maps from 176 image segments for 16x11 display
+     * Libera memoria de cada segmento después de crear el mapa
      * @param imageSegments Array of 176 BufferedImages (128x128 each)
      * @return List of ItemStacks with the maps
      */
@@ -39,6 +40,16 @@ public class SlideMapRenderer4x4 {
             // Create a new map
             ItemStack mapItem = createMapItemFromImage(segment, i);
             mapItems.add(mapItem);
+            
+            // Liberar el segmento inmediatamente después de crear el mapa
+            // El renderer interno ya tiene una copia, así que podemos liberar el original
+            segment.flush();
+            imageSegments[i] = null; // Permitir que GC lo recolecte
+            
+            // Sugerir GC cada 44 mapas (25% del total) para evitar acumulación
+            if ((i + 1) % 44 == 0) {
+                System.gc();
+            }
         }
         
         return mapItems;

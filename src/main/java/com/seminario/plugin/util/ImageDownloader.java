@@ -35,17 +35,26 @@ public class ImageDownloader {
     
     private final JavaPlugin plugin;
     private final File cacheDir;
+    private final File slidesSrcDir;
     
     public ImageDownloader(JavaPlugin plugin) {
         this.plugin = plugin;
         this.cacheDir = new File(plugin.getDataFolder(), "image_cache");
+        this.slidesSrcDir = new File(plugin.getDataFolder(), "slides_src");
+        
         if (!cacheDir.exists()) {
             cacheDir.mkdirs();
         }
         
+        if (!slidesSrcDir.exists()) {
+            slidesSrcDir.mkdirs();
+            LOGGER.info("Created slides_src directory for local slide images");
+        }
+        
         // Limpiar caché al iniciar para forzar regeneración de imágenes en formato actual
         clearCache();
-        LOGGER.info("Image cache cleared on startup - all slides will be regenerated in 12x9 format");
+        LOGGER.info("Image cache cleared on startup - all slides will be regenerated in 16x11 format");
+        LOGGER.info("You can place local images in slides_src/<slide_zone_name>/<slide_number>.png to avoid downloading from URLs");
     }
     
     /**
@@ -68,14 +77,57 @@ public class ImageDownloader {
     
     /**
      * Download and process an image asynchronously
+     * Checks for local image in slides_src first before downloading from URL
      * @param imageUrl The URL of the image
      * @param filename The filename to save the cached image
      * @return CompletableFuture with the processed BufferedImage
      */
     public CompletableFuture<BufferedImage> downloadAndProcessImage(String imageUrl, String filename) {
+        return downloadAndProcessImage(imageUrl, filename, null, 0);
+    }
+    
+    /**
+     * Download and process an image asynchronously with local file check
+     * Checks for local image in slides_src/<zoneName>/<slideNumber>.png first
+     * @param imageUrl The URL of the image
+     * @param filename The filename to save the cached image
+     * @param zoneName The zone name (for local file lookup)
+     * @param slideNumber The slide number (for local file lookup)
+     * @return CompletableFuture with the processed BufferedImage
+     */
+    public CompletableFuture<BufferedImage> downloadAndProcessImage(String imageUrl, String filename, String zoneName, int slideNumber) {
         return CompletableFuture.supplyAsync(() -> {
             try {
-                LOGGER.info("Starting download of image: " + imageUrl);
+                // Check for local image file first (slides_src/<zoneName>/<slideNumber>.png)
+                if (zoneName != null && slideNumber > 0) {
+                    File localImageFile = getLocalSlideImageFile(zoneName, slideNumber);
+                    if (localImageFile != null && localImageFile.exists()) {
+                        LOGGER.info("Loading slide " + slideNumber + " from local file: " + localImageFile.getName() + " (zone: " + zoneName + ")");
+                        BufferedImage localImage = ImageIO.read(localImageFile);
+                        if (localImage != null) {
+                            // Process the local image the same way as downloaded images
+                            BufferedImage processedImage = resizeImage(localImage, TARGET_SIZE, TARGET_SIZE);
+                            
+                            // Liberar imagen original si es diferente de la procesada
+                            if (localImage != processedImage) {
+                                localImage.flush();
+                            }
+                            
+                            // Cache the processed image
+                            try {
+                                File cachedFile = new File(cacheDir, filename);
+                                ImageIO.write(processedImage, "png", cachedFile);
+                                LOGGER.info("Cached processed local image: " + filename);
+                            } catch (IOException e) {
+                                LOGGER.warning("Failed to cache local image: " + e.getMessage());
+                            }
+                            
+                            return processedImage;
+                        }
+                    }
+                }
+                
+                LOGGER.info("Starting image processing from URL: " + imageUrl);
                 
                 // Validate URL format
                 if (!isValidImageUrl(imageUrl)) {
@@ -100,6 +152,12 @@ public class ImageDownloader {
                 
                 // Process image (resize to 256x256)
                 BufferedImage processedImage = resizeImage(originalImage, TARGET_SIZE, TARGET_SIZE);
+                
+                // Liberar imagen original si es diferente de la procesada
+                if (originalImage != processedImage) {
+                    originalImage.flush();
+                    originalImage = null;
+                }
                 
                 // Cache processed image
                 try {
@@ -318,6 +376,7 @@ public class ImageDownloader {
      * Split image into 176 segments for 16x11 map display
      * OPTIMIZADO: Procesa a 4096x2816 (256x256 por segmento) para reducir uso de RAM
      * Luego reduce cada segmento a 128x128 con BICUBIC para buena calidad
+     * Procesa en lotes de 32 segmentos para liberar memoria progresivamente
      * @param originalImage The original downloaded image
      * @return Array of 176 BufferedImages (128x128 each)
      */
@@ -331,15 +390,26 @@ public class ImageDownloader {
         LOGGER.info("Resizing image to " + superWidth + "x" + superHeight + " for optimal quality...");
         BufferedImage superResImage = resizeImage(originalImage, superWidth, superHeight);
         
+        // Liberar imagen original inmediatamente
+        if (originalImage != superResImage) {
+            originalImage.flush();
+            LOGGER.fine("Original image flushed from memory");
+        }
+        
         BufferedImage[] segments = new BufferedImage[176];
         int superSegmentSize = 256; // Cada segmento temporal es 256x256 (antes 512x512)
         int finalSegmentSize = 128; // Tamaño final 128x128
         
-        LOGGER.info("Splitting into 16x11 segments and downsampling...");
-        // Split into 16x11 grid y reducir cada segmento individualmente
-        for (int row = 0; row < 11; row++) {
-            for (int col = 0; col < 16; col++) {
-                int index = row * 16 + col;
+        LOGGER.info("Splitting into 16x11 segments and downsampling (processing in batches)...");
+        
+        // Procesar en lotes de 32 segmentos para liberar memoria progresivamente
+        int batchSize = 32;
+        for (int batchStart = 0; batchStart < 176; batchStart += batchSize) {
+            int batchEnd = Math.min(batchStart + batchSize, 176);
+            
+            for (int index = batchStart; index < batchEnd; index++) {
+                int row = index / 16;
+                int col = index % 16;
                 int x = col * superSegmentSize;
                 int y = row * superSegmentSize;
                 
@@ -348,13 +418,22 @@ public class ImageDownloader {
                 
                 // Reducir a 128x128 con BICUBIC para buena calidad
                 segments[index] = resizeImage(superSegment, finalSegmentSize, finalSegmentSize);
+                
+                // Liberar el subimage temporal inmediatamente
+                // Nota: getSubimage() crea una vista, no una copia, así que no consumimos memoria extra
+            }
+            
+            // Sugerir garbage collection después de cada lote
+            if ((batchEnd - batchStart) == batchSize) {
+                System.gc();
+                LOGGER.fine("Processed batch " + (batchStart / batchSize + 1) + "/" + ((176 + batchSize - 1) / batchSize));
             }
         }
         
         // Liberar memoria de la imagen super-res
         superResImage.flush();
         
-        LOGGER.info("Successfully split image into 176 segments");
+        LOGGER.info("Successfully split image into 176 segments with memory optimization");
         return segments;
     }
     
@@ -549,5 +628,32 @@ public class ImageDownloader {
      */
     public File getCacheDir() {
         return cacheDir;
+    }
+    
+    /**
+     * Get the local slide image file if it exists
+     * Looks for: slides_src/<zoneName>/<slideNumber>.png
+     * @param zoneName The zone name
+     * @param slideNumber The slide number
+     * @return File object if exists, null otherwise
+     */
+    private File getLocalSlideImageFile(String zoneName, int slideNumber) {
+        if (zoneName == null || zoneName.trim().isEmpty() || slideNumber <= 0) {
+            return null;
+        }
+        
+        // Create zone directory path
+        File zoneDir = new File(slidesSrcDir, zoneName);
+        if (!zoneDir.exists() || !zoneDir.isDirectory()) {
+            return null;
+        }
+        
+        // Check for <slideNumber>.png
+        File imageFile = new File(zoneDir, slideNumber + ".png");
+        if (imageFile.exists() && imageFile.isFile()) {
+            return imageFile;
+        }
+        
+        return null;
     }
 }

@@ -40,6 +40,58 @@ public class SlideManager {
         
         loadSlides();
         clearAllMapIds(); // Limpiar IDs de mapas para forzar regeneración en nuevo formato
+        createSlideSourceDirectories(); // Crear carpetas para slides existentes
+    }
+    
+    /**
+     * Create source directories for all existing slide zones
+     * This ensures retrocompatibility by creating the folder structure
+     */
+    private void createSlideSourceDirectories() {
+        File slidesSrcDir = new File(plugin.getDataFolder(), "slides_src");
+        if (!slidesSrcDir.exists()) {
+            slidesSrcDir.mkdirs();
+        }
+        
+        int createdCount = 0;
+        for (String zoneName : zoneSlides.keySet()) {
+            File zoneDir = new File(slidesSrcDir, zoneName);
+            if (!zoneDir.exists()) {
+                if (zoneDir.mkdirs()) {
+                    createdCount++;
+                    logger.info("Created slides_src directory for zone: " + zoneName);
+                    
+                    // Create a README file in the zone directory
+                    File readmeFile = new File(zoneDir, "README.txt");
+                    try {
+                        java.io.FileWriter writer = new java.io.FileWriter(readmeFile);
+                        writer.write("==============================================\n");
+                        writer.write("  Carpeta de Imágenes Locales - Zona: " + zoneName + "\n");
+                        writer.write("==============================================\n\n");
+                        writer.write("Coloca aquí las imágenes PNG para las diapositivas:\n");
+                        writer.write("- 1.png (Primera diapositiva)\n");
+                        writer.write("- 2.png (Segunda diapositiva)\n");
+                        writer.write("- 3.png (Tercera diapositiva)\n");
+                        writer.write("- etc...\n\n");
+                        writer.write("Ventajas:\n");
+                        writer.write("✓ Carga más rápida\n");
+                        writer.write("✓ No requiere internet\n");
+                        writer.write("✓ Mayor control sobre las imágenes\n\n");
+                        writer.write("Si no colocas imágenes aquí, el plugin descargará\n");
+                        writer.write("automáticamente desde las URLs configuradas.\n\n");
+                        writer.write("Total de slides en esta zona: " + zoneSlides.get(zoneName).size() + "\n");
+                        writer.close();
+                    } catch (IOException e) {
+                        logger.warning("Could not create README in " + zoneName + ": " + e.getMessage());
+                    }
+                }
+            }
+        }
+        
+        if (createdCount > 0) {
+            logger.info("Created " + createdCount + " slide source directories for retrocompatibility");
+            logger.info("You can now place local PNG images in slides_src/<zone_name>/<slide_number>.png");
+        }
     }
     
     /**
@@ -172,6 +224,11 @@ public class SlideManager {
     public Slide addSlide(String zoneName, String url) {
         List<Slide> slides = zoneSlides.computeIfAbsent(zoneName, k -> new ArrayList<>());
         
+        // Create directory for new zone if it's the first slide
+        if (slides.isEmpty()) {
+            createSlideSourceDirectoryForZone(zoneName);
+        }
+        
         int slideNumber = slides.size() + 1;
         Slide newSlide = new Slide(url, slideNumber);
         slides.add(newSlide);
@@ -179,6 +236,42 @@ public class SlideManager {
         saveSlides();
         logger.info("Added slide #" + slideNumber + " to zone '" + zoneName + "': " + url);
         return newSlide;
+    }
+    
+    /**
+     * Create source directory for a specific zone
+     * @param zoneName The zone name
+     */
+    private void createSlideSourceDirectoryForZone(String zoneName) {
+        File slidesSrcDir = new File(plugin.getDataFolder(), "slides_src");
+        File zoneDir = new File(slidesSrcDir, zoneName);
+        
+        if (!zoneDir.exists()) {
+            if (zoneDir.mkdirs()) {
+                logger.info("Created slides_src directory for new zone: " + zoneName);
+                
+                // Create README
+                File readmeFile = new File(zoneDir, "README.txt");
+                try (java.io.FileWriter writer = new java.io.FileWriter(readmeFile)) {
+                    writer.write("==============================================\n");
+                    writer.write("  Carpeta de Imágenes Locales - Zona: " + zoneName + "\n");
+                    writer.write("==============================================\n\n");
+                    writer.write("Coloca aquí las imágenes PNG para las diapositivas:\n");
+                    writer.write("- 1.png (Primera diapositiva)\n");
+                    writer.write("- 2.png (Segunda diapositiva)\n");
+                    writer.write("- 3.png (Tercera diapositiva)\n");
+                    writer.write("- etc...\n\n");
+                    writer.write("Ventajas:\n");
+                    writer.write("✓ Carga más rápida\n");
+                    writer.write("✓ No requiere internet\n");
+                    writer.write("✓ Mayor control sobre las imágenes\n\n");
+                    writer.write("Si no colocas imágenes aquí, el plugin descargará\n");
+                    writer.write("automáticamente desde las URLs configuradas.\n");
+                } catch (IOException e) {
+                    logger.warning("Could not create README in " + zoneName + ": " + e.getMessage());
+                }
+            }
+        }
     }
     
     /**

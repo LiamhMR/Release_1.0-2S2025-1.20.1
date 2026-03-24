@@ -305,7 +305,9 @@ public class SlideShowManager {
         
         String cacheFilename = imageDownloader.generateCacheFilename(slide.getUrl(), slide.getSlideNumber());
         
-        CompletableFuture<BufferedImage> imageFuture = imageDownloader.downloadAndProcessImage(slide.getUrl(), cacheFilename);
+        // Pass zoneName and slideNumber for local file lookup
+        CompletableFuture<BufferedImage> imageFuture = imageDownloader.downloadAndProcessImage(
+            slide.getUrl(), cacheFilename, zoneName, slide.getSlideNumber());
         
         imageFuture.thenAccept(processedImage -> {
             // Run on main thread

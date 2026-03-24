@@ -278,22 +278,38 @@ public class FixSlideManager {
     
     /**
      * Process a slide image asynchronously for FIXSLIDE
+     * Optimizado para liberar memoria progresivamente durante el procesamiento
      */
     private void processSlideForFixSlide(MenuZone zone, Slide slide) {
         String cacheFilename = imageDownloader.generateCacheFilename(slide.getUrl(), slide.getSlideNumber());
         
-        java.util.concurrent.CompletableFuture<java.awt.image.BufferedImage> imageFuture = 
-            imageDownloader.downloadAndProcessImage(slide.getUrl(), cacheFilename);
+        // Get the linked SLIDE zone name to use as folder name
+        String linkedZoneName = zone.getLinkedSlideZone();
         
-        imageFuture.thenAccept(processedImage -> {
+        java.util.concurrent.CompletableFuture<java.awt.image.BufferedImage> imageFuture = 
+            imageDownloader.downloadAndProcessImage(slide.getUrl(), cacheFilename, linkedZoneName, slide.getSlideNumber());
+        
+        imageFuture.thenAccept(downloadedImage -> {
             // Run on main thread
             org.bukkit.Bukkit.getScheduler().runTask(plugin, () -> {
                 try {
-                    // Split image into 16x11 segments
-                    java.awt.image.BufferedImage[] segments = imageDownloader.splitImageFor16x11Maps(processedImage);
+                    LOGGER.info("Processing slide " + slide.getSlideNumber() + " for FIXSLIDE " + zone.getName() + "...");
                     
-                    // Create map items
+                    // Split image into 16x11 segments (esto ya libera downloadedImage internamente)
+                    java.awt.image.BufferedImage[] segments = imageDownloader.splitImageFor16x11Maps(downloadedImage);
+                    
+                    // Liberar downloadedImage inmediatamente después de dividir
+                    downloadedImage.flush();
+                    
+                    // Create map items (esto ya libera cada segmento internamente)
                     List<ItemStack> mapItems = com.seminario.plugin.util.SlideMapRenderer4x4.createMapItemsFor16x11Display(segments);
+                    
+                    // Liberar array de segmentos
+                    for (int i = 0; i < segments.length; i++) {
+                        if (segments[i] != null) {
+                            segments[i].flush();
+                        }
+                    }
                     
                     // Store map IDs in slide
                     List<Integer> mapIds = com.seminario.plugin.util.SlideMapRenderer4x4.getMapIds(mapItems);
@@ -304,7 +320,7 @@ public class FixSlideManager {
                     // Save updated slide info
                     slideManager.saveSlides();
                     
-                    LOGGER.info("Slide " + slide.getSlideNumber() + " processed successfully for FIXSLIDE " + zone.getName());
+                    LOGGER.info("Slide " + slide.getSlideNumber() + " processed successfully for FIXSLIDE " + zone.getName() + " (memory optimized)");
                     
                     // Remove from processing set
                     Set<Integer> processing = processingSlides.get(zone.getName());
@@ -314,6 +330,9 @@ public class FixSlideManager {
                             processingSlides.remove(zone.getName());
                         }
                     }
+                    
+                    // Sugerir garbage collection después de procesar slide completo
+                    System.gc();
                     
                     // Now render the slide directly (don't call renderFixSlide recursively to avoid loop)
                     try {
