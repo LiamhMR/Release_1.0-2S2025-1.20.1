@@ -4,7 +4,7 @@
 
 Este plugin fue desarrollado como parte del Seminario de Título de Ingeniería Civil Informática en la Pontificia Universidad Católica de Valparaíso (PUCV). El proyecto tiene como objetivo construir un juego educativo en Minecraft orientado a la enseñanza de SQL de forma interactiva y lúdica.
 
-El plugin transforma el entorno de Minecraft en un espacio de aprendizaje donde los jugadores pueden practicar y aprender consultas SQL a través de desafíos y escenarios diseñados específicamente para este propósito.
+El plugin tiene como objetivo ser una herramienta que ayude a transformar el entorno de Minecraft en un espacio de aprendizaje donde los jugadores pueden practicar y aprender consultas SQL a través de desafíos y escenarios diseñados específicamente para este propósito.
 
 ---
 
