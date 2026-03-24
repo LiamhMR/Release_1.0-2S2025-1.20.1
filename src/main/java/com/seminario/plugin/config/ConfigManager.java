@@ -16,6 +16,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 import com.seminario.plugin.model.MenuType;
 import com.seminario.plugin.model.MenuZone;
+import com.seminario.plugin.model.SQLBattleWorld;
 import com.seminario.plugin.model.SQLDungeonWorld;
 
 /**
@@ -26,21 +27,27 @@ public class ConfigManager {
     private final JavaPlugin plugin;
     private final Logger logger;
     private final File configFile;
+    private final File sqlBattlesFile;
     private final File sqlDungeonsFile;
     private FileConfiguration config;
+    private FileConfiguration sqlBattlesConfig;
     private FileConfiguration sqlDungeonsConfig;
     private Map<String, MenuZone> menuZones;
+    private Map<String, SQLBattleWorld> sqlBattles;
     private Map<String, SQLDungeonWorld> sqlDungeons;
     
     public ConfigManager(JavaPlugin plugin) {
         this.plugin = plugin;
         this.logger = plugin.getLogger();
         this.configFile = new File(plugin.getDataFolder(), "menuzones.yml");
+        this.sqlBattlesFile = new File(plugin.getDataFolder(), "sqlbattle.yml");
         this.sqlDungeonsFile = new File(plugin.getDataFolder(), "sqldungeons.yml");
         this.menuZones = new HashMap<>();
+        this.sqlBattles = new HashMap<>();
         this.sqlDungeons = new HashMap<>();
         
         loadConfig();
+        loadSQLBattles();
         loadSQLDungeons();
     }
     
@@ -208,7 +215,106 @@ public class ConfigManager {
      */
     public void reload() {
         loadConfig();
+        loadSQLBattles();
         loadSQLDungeons();
+    }
+
+    // ===== SQL BATTLE MANAGEMENT =====
+
+    private void loadSQLBattles() {
+        sqlBattles.clear();
+
+        if (!sqlBattlesFile.exists()) {
+            try {
+                sqlBattlesFile.createNewFile();
+                logger.info("Created new sqlbattle.yml file");
+            } catch (IOException e) {
+                logger.warning("Could not create sqlbattle.yml file: " + e.getMessage());
+                return;
+            }
+        }
+
+        sqlBattlesConfig = YamlConfiguration.loadConfiguration(sqlBattlesFile);
+
+        ConfigurationSection battlesSection = sqlBattlesConfig.getConfigurationSection("sqlbattles");
+        if (battlesSection == null) {
+            logger.info("No SQL battles found in configuration");
+            return;
+        }
+
+        for (String worldName : battlesSection.getKeys(false)) {
+            try {
+                ConfigurationSection battleSection = battlesSection.getConfigurationSection(worldName);
+                if (battleSection != null) {
+                    Map<String, Object> battleData = convertConfigurationSectionToMap(battleSection);
+                    SQLBattleWorld battleWorld = SQLBattleWorld.deserialize(battleData);
+                    sqlBattles.put(worldName, battleWorld);
+                    logger.info("Loaded SQL battle: " + worldName);
+                }
+            } catch (Exception e) {
+                logger.warning("Failed to load SQL battle '" + worldName + "': " + e.getMessage());
+            }
+        }
+
+        logger.info("Loaded " + sqlBattles.size() + " SQL battles");
+    }
+
+    public void saveSQLBattles() {
+        try {
+            sqlBattlesConfig.set("sqlbattles", null);
+
+            for (Map.Entry<String, SQLBattleWorld> entry : sqlBattles.entrySet()) {
+                String worldName = entry.getKey();
+                SQLBattleWorld battleWorld = entry.getValue();
+
+                Map<String, Object> serializedData = battleWorld.serialize();
+                for (Map.Entry<String, Object> dataEntry : serializedData.entrySet()) {
+                    sqlBattlesConfig.set("sqlbattles." + worldName + "." + dataEntry.getKey(), dataEntry.getValue());
+                }
+            }
+
+            sqlBattlesConfig.save(sqlBattlesFile);
+            logger.info("Saved " + sqlBattles.size() + " SQL battles to configuration");
+        } catch (IOException e) {
+            logger.severe("Could not save sqlbattle.yml: " + e.getMessage());
+        }
+    }
+
+    public boolean addSQLBattle(SQLBattleWorld battleWorld) {
+        if (sqlBattles.containsKey(battleWorld.getWorldName())) {
+            return false;
+        }
+
+        sqlBattles.put(battleWorld.getWorldName(), battleWorld);
+        saveSQLBattles();
+        logger.info("Added new SQL battle: " + battleWorld.getWorldName());
+        return true;
+    }
+
+    public boolean removeSQLBattle(String worldName) {
+        if (sqlBattles.remove(worldName) != null) {
+            saveSQLBattles();
+            logger.info("Removed SQL battle: " + worldName);
+            return true;
+        }
+        return false;
+    }
+
+    public SQLBattleWorld getSQLBattle(String worldName) {
+        return sqlBattles.get(worldName);
+    }
+
+    public Map<String, SQLBattleWorld> getAllSQLBattles() {
+        return new HashMap<>(sqlBattles);
+    }
+
+    public boolean isSQLBattle(String worldName) {
+        return sqlBattles.containsKey(worldName);
+    }
+
+    public void updateSQLBattle(SQLBattleWorld battleWorld) {
+        sqlBattles.put(battleWorld.getWorldName(), battleWorld);
+        saveSQLBattles();
     }
     
     // ===== SQL DUNGEONS MANAGEMENT =====

@@ -15,12 +15,14 @@ import com.seminario.plugin.manager.FireworkManager;
 import com.seminario.plugin.manager.FixSlideManager;
 import com.seminario.plugin.manager.HarryNPCManager;
 import com.seminario.plugin.manager.LobbyManager;
+import com.seminario.plugin.manager.SQLBattleManager;
 import com.seminario.plugin.manager.SQLDungeonManager;
 import com.seminario.plugin.manager.SlideManager;
 import com.seminario.plugin.manager.SlideShowManager;
 import com.seminario.plugin.manager.SpawnpointManager;
 import com.seminario.plugin.manager.SurveyManager;
 import com.seminario.plugin.model.MenuZone;
+import com.seminario.plugin.model.SQLBattleWorld;
 import com.seminario.plugin.model.SQLDungeonWorld;
 import com.seminario.plugin.model.SQLLevel;
 import com.seminario.plugin.model.Slide;
@@ -36,6 +38,7 @@ public class App extends JavaPlugin {
     private SlideManager slideManager;
     private SlideShowManager slideShowManager;
     private FixSlideManager fixSlideManager;
+    private SQLBattleManager sqlBattleManager;
     private SQLDungeonManager sqlDungeonManager;
     private SpawnpointManager spawnpointManager;
     private LobbyManager lobbyManager;
@@ -60,6 +63,7 @@ public class App extends JavaPlugin {
         // Register serializable classes for YAML storage
         ConfigurationSerialization.registerClass(MenuZone.class);
         ConfigurationSerialization.registerClass(Slide.class);
+        ConfigurationSerialization.registerClass(SQLBattleWorld.class);
         ConfigurationSerialization.registerClass(SQLDungeonWorld.class);
         ConfigurationSerialization.registerClass(SQLLevel.class);
         ConfigurationSerialization.registerClass(Survey.class);
@@ -69,6 +73,7 @@ public class App extends JavaPlugin {
         slideManager = new SlideManager(this);
         slideShowManager = new SlideShowManager(this, configManager, slideManager);
         fixSlideManager = new FixSlideManager(this, configManager, slideManager);
+        sqlBattleManager = new SQLBattleManager(this, configManager);
         sqlDungeonManager = new SQLDungeonManager(this, configManager);
         spawnpointManager = new SpawnpointManager(this, configManager);
         surveyManager = new SurveyManager(this);
@@ -143,7 +148,7 @@ public class App extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new HarryNPCListener(harryNPCManager), this);
         
         // Register commands
-        SeminarioCommand seminarioCommand = new SeminarioCommand(configManager, slideManager, sqlDungeonManager, spawnpointManager, lobbyManager, surveyManager, fireworkManager, harryNPCManager);
+        SeminarioCommand seminarioCommand = new SeminarioCommand(configManager, slideManager, sqlDungeonManager, sqlBattleManager, spawnpointManager, lobbyManager, surveyManager, fireworkManager, harryNPCManager);
         seminarioCommand.setFixSlideManager(fixSlideManager); // Connect FixSlideManager to commands
         var smCommand = getCommand("sm");
         if (smCommand != null) {

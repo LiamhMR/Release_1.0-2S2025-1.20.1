@@ -12,6 +12,7 @@ commands:
       /sm create menuzone <nombre> - Create a regular menu zone
       /sm create fixslide <nombre_fixslide> <nombre_zona_slide> - Create a fixed slide presentation linked to a SLIDE zone
       /sm create SQLDUNGEON <mundo> - Create SQL dungeon
+      /sm create SQLBATTLE [mundo] - Create SQL battle world using current world when omitted
       /sm remove <name> - Remove a menu zone
       /sm list - List all menu zones
       /sm info [name] - Show info about menu zones
@@ -21,6 +22,14 @@ commands:
       /sm fixslide <name> <fix|nextbutton|backbutton|+X|-X|+Z|-Z> - Configure fixed slide presentations
       /sm disabled <name> - Toggle zone enabled/disabled state
       /sm sql <here|schema|bank|info|repair> [args] - SQL dungeon commands
+      /sm sqlbattle <here|start|stop|difficulty|list|info|remove> [args] - SQL battle scenario commands
+      /sm sqlbattle here set checkpoint - Set SQL battle player checkpoint in current world
+      /sm sqlbattle start [mundo] - Start SQL battle test in current/specified world
+      /sm sqlbattle stop [mundo] - Stop SQL battle and set world to peaceful
+      /sm sqlbattle difficulty <peaceful|easy|normal|hard> [mundo] - Set SQL battle world difficulty
+      /sm sqlbattle reset [mundo] - Reset SQL battle test state for players
+      /sm sqlbattle forcestage <1|2|3> [jugador] - Force stage for debug
+      /sm sqlbattle respawncheckpoint [jugador] - Teleport player to SQL battle checkpoint
       /sm survey <create|add|edit|start|list|info|stats> [args] - Manage surveys
       /sm defaultsurvey <nombre_encuesta> - Set default survey for post-test at current location
       /sm createfire <color> [color2] [color3] - Create firework trigger at current location

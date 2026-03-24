@@ -6,8 +6,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Color;
+import org.bukkit.Difficulty;
 import org.bukkit.FireworkEffect;
 import org.bukkit.Location;
 import org.bukkit.World;
@@ -20,6 +22,7 @@ import org.bukkit.entity.Player;
 import com.seminario.plugin.config.ConfigManager;
 import com.seminario.plugin.manager.HarryNPCManager;
 import com.seminario.plugin.manager.LobbyManager;
+import com.seminario.plugin.manager.SQLBattleManager;
 import com.seminario.plugin.manager.SQLDungeonManager;
 import com.seminario.plugin.manager.SlideManager;
 import com.seminario.plugin.manager.SpawnpointManager;
@@ -27,6 +30,7 @@ import com.seminario.plugin.manager.SurveyManager;
 import com.seminario.plugin.model.FireworkTrigger;
 import com.seminario.plugin.model.MenuType;
 import com.seminario.plugin.model.MenuZone;
+import com.seminario.plugin.model.SQLBattleWorld;
 import com.seminario.plugin.model.Slide;
 import com.seminario.plugin.model.Survey;
 import com.sk89q.worldedit.IncompleteRegionException;
@@ -44,6 +48,7 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
     private final ConfigManager configManager;
     private final SlideManager slideManager;
     private final SQLDungeonManager sqlDungeonManager;
+    private final SQLBattleManager sqlBattleManager;
     private final SpawnpointManager spawnpointManager;
     private final LobbyManager lobbyManager;
     private final SurveyManager surveyManager;
@@ -51,10 +56,11 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
     private final HarryNPCManager harryNPCManager;
     private com.seminario.plugin.manager.FixSlideManager fixSlideManager;
     
-    public SeminarioCommand(ConfigManager configManager, SlideManager slideManager, SQLDungeonManager sqlDungeonManager, SpawnpointManager spawnpointManager, LobbyManager lobbyManager, SurveyManager surveyManager, com.seminario.plugin.manager.FireworkManager fireworkManager, HarryNPCManager harryNPCManager) {
+    public SeminarioCommand(ConfigManager configManager, SlideManager slideManager, SQLDungeonManager sqlDungeonManager, SQLBattleManager sqlBattleManager, SpawnpointManager spawnpointManager, LobbyManager lobbyManager, SurveyManager surveyManager, com.seminario.plugin.manager.FireworkManager fireworkManager, HarryNPCManager harryNPCManager) {
         this.configManager = configManager;
         this.slideManager = slideManager;
         this.sqlDungeonManager = sqlDungeonManager;
+        this.sqlBattleManager = sqlBattleManager;
         this.spawnpointManager = spawnpointManager;
         this.lobbyManager = lobbyManager;
         this.surveyManager = surveyManager;
@@ -105,6 +111,8 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
                 return handleChestportCommand(sender, args);
             case "sql":
                 return handleSQLCommand(sender, args);
+            case "sqlbattle":
+                return handleSQLBattleCommand(sender, args);
             case "db":
                 return handleDBCommand(sender, args);
             case "spawnpoint":
@@ -143,23 +151,35 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
             return true;
         }
         
-        if (args.length < 3) {
-            sender.sendMessage(ChatColor.RED + "Uso: /sm create <menuzone|fixslide|SQLDUNGEON> <nombre> [args]");
+        if (args.length < 2) {
+            sender.sendMessage(ChatColor.RED + "Uso: /sm create <menuzone|fixslide|SQLDUNGEON|SQLBATTLE> <nombre> [args]");
             sender.sendMessage(ChatColor.YELLOW + "Ejemplos:");
             sender.sendMessage(ChatColor.GRAY + "  /sm create menuzone mi_zona");
             sender.sendMessage(ChatColor.GRAY + "  /sm create fixslide mi_fixslide mi_zona_slide");
             sender.sendMessage(ChatColor.GRAY + "  /sm create SQLDUNGEON nombre_mundo");
+            sender.sendMessage(ChatColor.GRAY + "  /sm create SQLBATTLE [nombre_mundo]");
             return true;
         }
         
         String createType = args[1].toLowerCase();
         if (createType.equals("sqldungeon")) {
             return handleCreateSQLDungeon(sender, args);
+        } else if (createType.equals("sqlbattle")) {
+            return handleCreateSQLBattle(sender, args);
         } else if (createType.equals("fixslide")) {
+            if (args.length < 4) {
+                sender.sendMessage(ChatColor.RED + "Uso: /sm create fixslide <nombre_fixslide> <nombre_zona_slide>");
+                return true;
+            }
             return handleCreateFixSlide(sender, args);
         } else if (!createType.equals("menuzone")) {
             sender.sendMessage(ChatColor.RED + "Tipo desconocido: " + createType);
-            sender.sendMessage(ChatColor.GRAY + "Tipos válidos: menuzone, fixslide, SQLDUNGEON");
+            sender.sendMessage(ChatColor.GRAY + "Tipos válidos: menuzone, fixslide, SQLDUNGEON, SQLBATTLE");
+            return true;
+        }
+
+        if (args.length < 3) {
+            sender.sendMessage(ChatColor.RED + "Uso: /sm create menuzone <nombre>");
             return true;
         }
         
@@ -910,7 +930,19 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
     private void sendHelpMessage(CommandSender sender) {
         sender.sendMessage(ChatColor.GREEN + "=== Comandos de Seminario ===");
         sender.sendMessage(ChatColor.WHITE + "/sm create menuzone <nombre>" + ChatColor.GRAY + " - Crear zona de menú");
+        sender.sendMessage(ChatColor.WHITE + "/sm create SQLBATTLE [mundo]" + ChatColor.GRAY + " - Registrar mundo SQL Battle");
         sender.sendMessage(ChatColor.WHITE + "/sm set menutype <zona> <tipo>" + ChatColor.GRAY + " - Establecer tipo de menú");
+        sender.sendMessage(ChatColor.WHITE + "/sm sqlbattle here set start" + ChatColor.GRAY + " - Guardar punto de inicio del combate");
+        sender.sendMessage(ChatColor.WHITE + "/sm sqlbattle here set checkpoint" + ChatColor.GRAY + " - Guardar checkpoint de respawn");
+        sender.sendMessage(ChatColor.WHITE + "/sm sqlbattle here set prewave" + ChatColor.GRAY + " - Guardar fase de preparación SQL");
+        sender.sendMessage(ChatColor.WHITE + "/sm sqlbattle here set enemyspawn" + ChatColor.GRAY + " - Guardar región de spawn enemigo con WorldEdit");
+        sender.sendMessage(ChatColor.WHITE + "/sm sqlbattle start [mundo]" + ChatColor.GRAY + " - Iniciar prueba manual SQL Battle");
+        sender.sendMessage(ChatColor.WHITE + "/sm sqlbattle stop [mundo]" + ChatColor.GRAY + " - Detener oleada y dejar mundo en PEACEFUL");
+        sender.sendMessage(ChatColor.WHITE + "/sm sqlbattle difficulty <dif> [mundo]" + ChatColor.GRAY + " - Cambiar dificultad (peaceful/easy/normal/hard)");
+        sender.sendMessage(ChatColor.WHITE + "/sm sqlbattle reset [mundo]" + ChatColor.GRAY + " - Resetear estado de jugadores para debug");
+        sender.sendMessage(ChatColor.WHITE + "/sm sqlbattle forcestage <1|2|3> [jugador]" + ChatColor.GRAY + " - Forzar etapa de oleada");
+        sender.sendMessage(ChatColor.WHITE + "/sm sqlbattle respawncheckpoint [jugador]" + ChatColor.GRAY + " - Enviar al checkpoint");
+        sender.sendMessage(ChatColor.WHITE + "/sm sqlbattle info [mundo]" + ChatColor.GRAY + " - Ver estado de configuración SQL Battle");
         sender.sendMessage(ChatColor.WHITE + "/sm slide <zona> add <url>" + ChatColor.GRAY + " - Agregar slide");
         sender.sendMessage(ChatColor.WHITE + "/sm slide <zona> edit <nro> <url>" + ChatColor.GRAY + " - Editar slide");
         sender.sendMessage(ChatColor.WHITE + "/sm slide <zona> delete <nro>" + ChatColor.GRAY + " - Eliminar slide");
@@ -930,6 +962,20 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
     private String formatLocation(Location loc) {
         return String.format("%.1f, %.1f, %.1f", loc.getX(), loc.getY(), loc.getZ());
     }
+
+    private String formatOptionalLocation(Location loc) {
+        if (loc == null || loc.getWorld() == null) {
+            return ChatColor.DARK_GRAY + "no configurado";
+        }
+        return ChatColor.GRAY + loc.getWorld().getName() + " @ " + formatLocation(loc);
+    }
+
+    private String formatOptionalRegion(Location pos1, Location pos2) {
+        if (pos1 == null || pos2 == null || pos1.getWorld() == null || pos2.getWorld() == null) {
+            return ChatColor.DARK_GRAY + "no configurado";
+        }
+        return ChatColor.GRAY + pos1.getWorld().getName() + " [" + formatLocation(pos1) + " -> " + formatLocation(pos2) + "]";
+    }
     
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
@@ -938,7 +984,7 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
         }
         
         if (args.length == 1) {
-            return Arrays.asList("create", "remove", "list", "info", "set", "slide", "fixslide", "disabled", "enabled", "reload", "sql", "spawnpoint", "lobby", "survey", "defaultsurvey", "createfire", "createcreeperfire", "firework", "newharry", "harry")
+            return Arrays.asList("create", "remove", "list", "info", "set", "slide", "fixslide", "disabled", "enabled", "reload", "sql", "sqlbattle", "spawnpoint", "lobby", "survey", "defaultsurvey", "createfire", "createcreeperfire", "firework", "newharry", "harry")
                 .stream()
                 .filter(s -> s.toLowerCase().startsWith(args[0].toLowerCase()))
                 .collect(Collectors.toList());
@@ -946,7 +992,14 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
         
         if (args.length == 2) {
             if (args[0].equalsIgnoreCase("create")) {
-                return Arrays.asList("menuzone", "fixslide", "SQLDUNGEON")
+                return Arrays.asList("menuzone", "fixslide", "SQLDUNGEON", "SQLBATTLE")
+                    .stream()
+                    .filter(s -> s.toLowerCase().startsWith(args[1].toLowerCase()))
+                    .collect(Collectors.toList());
+            }
+
+            if (args[0].equalsIgnoreCase("sqlbattle")) {
+                return Arrays.asList("here", "start", "stop", "difficulty", "reset", "forcestage", "respawncheckpoint", "list", "info", "remove")
                     .stream()
                     .filter(s -> s.toLowerCase().startsWith(args[1].toLowerCase()))
                     .collect(Collectors.toList());
@@ -1022,6 +1075,47 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
                     .filter(s -> s.toLowerCase().startsWith(args[2].toLowerCase()))
                     .collect(Collectors.toList());
             }
+
+            if (args[0].equalsIgnoreCase("create") && args[1].equalsIgnoreCase("SQLBATTLE")) {
+                return org.bukkit.Bukkit.getWorlds().stream()
+                    .map(org.bukkit.World::getName)
+                    .filter(s -> s.toLowerCase().startsWith(args[2].toLowerCase()))
+                    .collect(Collectors.toList());
+            }
+
+            if (args[0].equalsIgnoreCase("sqlbattle") && args[1].equalsIgnoreCase("here")) {
+                return Arrays.asList("set", "status")
+                    .stream()
+                    .filter(s -> s.toLowerCase().startsWith(args[2].toLowerCase()))
+                    .collect(Collectors.toList());
+            }
+
+            if (args[0].equalsIgnoreCase("sqlbattle") && (args[1].equalsIgnoreCase("start") || args[1].equalsIgnoreCase("stop") || args[1].equalsIgnoreCase("reset") || args[1].equalsIgnoreCase("info") || args[1].equalsIgnoreCase("remove"))) {
+                return sqlBattleManager.getAllSQLBattles().keySet().stream()
+                    .filter(s -> s.toLowerCase().startsWith(args[2].toLowerCase()))
+                    .collect(Collectors.toList());
+            }
+
+            if (args[0].equalsIgnoreCase("sqlbattle") && args[1].equalsIgnoreCase("difficulty")) {
+                return Arrays.asList("peaceful", "easy", "normal", "hard")
+                    .stream()
+                    .filter(s -> s.toLowerCase().startsWith(args[2].toLowerCase()))
+                    .collect(Collectors.toList());
+            }
+
+            if (args[0].equalsIgnoreCase("sqlbattle") && args[1].equalsIgnoreCase("forcestage")) {
+                return Arrays.asList("1", "2", "3")
+                    .stream()
+                    .filter(s -> s.startsWith(args[2]))
+                    .collect(Collectors.toList());
+            }
+
+            if (args[0].equalsIgnoreCase("sqlbattle") && args[1].equalsIgnoreCase("respawncheckpoint")) {
+                return Bukkit.getOnlinePlayers().stream()
+                    .map(Player::getName)
+                    .filter(s -> s.toLowerCase().startsWith(args[2].toLowerCase()))
+                    .collect(Collectors.toList());
+            }
             
             if (args[0].equalsIgnoreCase("fixslide")) {
                 // Don't suggest subcommands if "list" was typed
@@ -1044,6 +1138,26 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
                     .stream()
                     .filter(zone -> zone.hasMenuType() && zone.getMenuType() == MenuType.SLIDE)
                     .map(MenuZone::getName)
+                    .filter(s -> s.toLowerCase().startsWith(args[3].toLowerCase()))
+                    .collect(Collectors.toList());
+            }
+
+            if (args[0].equalsIgnoreCase("sqlbattle") && args[1].equalsIgnoreCase("here") && args[2].equalsIgnoreCase("set")) {
+                return Arrays.asList("start", "checkpoint", "prewave", "enemyspawn")
+                    .stream()
+                    .filter(s -> s.toLowerCase().startsWith(args[3].toLowerCase()))
+                    .collect(Collectors.toList());
+            }
+
+            if (args[0].equalsIgnoreCase("sqlbattle") && args[1].equalsIgnoreCase("forcestage")) {
+                return Bukkit.getOnlinePlayers().stream()
+                    .map(Player::getName)
+                    .filter(s -> s.toLowerCase().startsWith(args[3].toLowerCase()))
+                    .collect(Collectors.toList());
+            }
+
+            if (args[0].equalsIgnoreCase("sqlbattle") && args[1].equalsIgnoreCase("difficulty")) {
+                return sqlBattleManager.getAllSQLBattles().keySet().stream()
                     .filter(s -> s.toLowerCase().startsWith(args[3].toLowerCase()))
                     .collect(Collectors.toList());
             }
@@ -1272,6 +1386,40 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
         
         return true;
     }
+
+    /**
+     * Handle SQL Battle creation.
+     */
+    private boolean handleCreateSQLBattle(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player)) {
+            sender.sendMessage(ChatColor.RED + "Este comando solo puede ser usado por jugadores.");
+            return true;
+        }
+
+        Player player = (Player) sender;
+        World world = args.length >= 3 ? player.getServer().getWorld(args[2]) : player.getWorld();
+
+        if (world == null) {
+            sender.sendMessage(ChatColor.RED + "El mundo especificado no existe.");
+            return true;
+        }
+
+        if (sqlBattleManager.isSQLBattle(world.getName())) {
+            sender.sendMessage(ChatColor.RED + "El mundo '" + world.getName() + "' ya es un SQL Battle.");
+            return true;
+        }
+
+        if (sqlBattleManager.createSQLBattle(world)) {
+            sender.sendMessage(ChatColor.GREEN + "¡SQL Battle creado en el mundo '" + world.getName() + "'!");
+            sender.sendMessage(ChatColor.GRAY + "Siguiente paso: /sm sqlbattle here set start");
+            sender.sendMessage(ChatColor.GRAY + "Luego: /sm sqlbattle here set prewave");
+            sender.sendMessage(ChatColor.GRAY + "Luego: /sm sqlbattle here set enemyspawn");
+        } else {
+            sender.sendMessage(ChatColor.RED + "Error al crear el SQL Battle.");
+        }
+
+        return true;
+    }
     
     /**
      * Handle SQL commands
@@ -1305,6 +1453,461 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
                 sender.sendMessage(ChatColor.RED + "Uso: /sm sql <here|schema|bank|info|repair>");
                 return true;
         }
+    }
+
+    /**
+     * Handle SQL Battle setup commands.
+     */
+    private boolean handleSQLBattleCommand(CommandSender sender, String[] args) {
+        if (args.length < 2) {
+            sender.sendMessage(ChatColor.RED + "Uso: /sm sqlbattle <here|start|stop|difficulty|reset|forcestage|respawncheckpoint|list|info|remove>");
+            return true;
+        }
+
+        String battleAction = args[1].toLowerCase();
+        switch (battleAction) {
+            case "here":
+                if (!(sender instanceof Player)) {
+                    sender.sendMessage(ChatColor.RED + "Este comando solo puede ser usado por jugadores.");
+                    return true;
+                }
+                return handleSQLBattleHereCommand((Player) sender, args);
+            case "start":
+                return handleSQLBattleStartCommand(sender, args);
+            case "stop":
+                return handleSQLBattleStopCommand(sender, args);
+            case "difficulty":
+                return handleSQLBattleDifficultyCommand(sender, args);
+            case "reset":
+                return handleSQLBattleResetCommand(sender, args);
+            case "forcestage":
+                return handleSQLBattleForceStageCommand(sender, args);
+            case "respawncheckpoint":
+                return handleSQLBattleRespawnCheckpointCommand(sender, args);
+            case "list":
+                return handleSQLBattleListCommand(sender);
+            case "info":
+                return handleSQLBattleInfoCommand(sender, args);
+            case "remove":
+                return handleSQLBattleRemoveCommand(sender, args);
+            default:
+                sender.sendMessage(ChatColor.RED + "Uso: /sm sqlbattle <here|start|stop|difficulty|reset|forcestage|respawncheckpoint|list|info|remove>");
+                return true;
+        }
+    }
+
+    private boolean handleSQLBattleStopCommand(CommandSender sender, String[] args) {
+        String worldName;
+        if (args.length >= 3) {
+            worldName = args[2];
+        } else if (sender instanceof Player) {
+            worldName = ((Player) sender).getWorld().getName();
+        } else {
+            sender.sendMessage(ChatColor.RED + "Uso: /sm sqlbattle stop <mundo>");
+            return true;
+        }
+
+        if (!sqlBattleManager.isSQLBattle(worldName)) {
+            sender.sendMessage(ChatColor.RED + "El mundo '" + worldName + "' no está configurado como SQL Battle.");
+            return true;
+        }
+
+        sqlBattleManager.setWaveActive(worldName, false);
+        sender.sendMessage(ChatColor.GREEN + "SQL Battle detenido en '" + worldName + "'.");
+        sender.sendMessage(ChatColor.GRAY + "Dificultad del mundo cambiada a PEACEFUL.");
+        return true;
+    }
+
+    private boolean handleSQLBattleDifficultyCommand(CommandSender sender, String[] args) {
+        if (args.length < 3) {
+            sender.sendMessage(ChatColor.RED + "Uso: /sm sqlbattle difficulty <peaceful|easy|normal|hard> [mundo]");
+            return true;
+        }
+
+        Difficulty difficulty;
+        try {
+            difficulty = Difficulty.valueOf(args[2].toUpperCase());
+        } catch (IllegalArgumentException e) {
+            sender.sendMessage(ChatColor.RED + "Dificultad inválida. Usa: peaceful, easy, normal, hard");
+            return true;
+        }
+
+        String worldName;
+        if (args.length >= 4) {
+            worldName = args[3];
+        } else if (sender instanceof Player) {
+            worldName = ((Player) sender).getWorld().getName();
+        } else {
+            sender.sendMessage(ChatColor.RED + "Uso: /sm sqlbattle difficulty <peaceful|easy|normal|hard> <mundo>");
+            return true;
+        }
+
+        if (!sqlBattleManager.isSQLBattle(worldName)) {
+            sender.sendMessage(ChatColor.RED + "El mundo '" + worldName + "' no está configurado como SQL Battle.");
+            return true;
+        }
+
+        if (!sqlBattleManager.setWorldDifficulty(worldName, difficulty)) {
+            sender.sendMessage(ChatColor.RED + "No se pudo aplicar la dificultad. Verifica que el mundo esté cargado.");
+            return true;
+        }
+
+        sender.sendMessage(ChatColor.GREEN + "Dificultad de SQL Battle cambiada en '" + worldName + "' a " + difficulty.name() + ".");
+        return true;
+    }
+
+    private boolean handleSQLBattleResetCommand(CommandSender sender, String[] args) {
+        if (sender instanceof Player && args.length < 3) {
+            Player player = (Player) sender;
+            String worldName = player.getWorld().getName();
+
+            if (!sqlBattleManager.isSQLBattle(worldName)) {
+                player.sendMessage(ChatColor.RED + "Este mundo no es un SQL Battle.");
+                return true;
+            }
+
+            if (!sqlBattleManager.resetPlayerForDebug(player)) {
+                player.sendMessage(ChatColor.RED + "No se pudo resetear. Configura start/checkpoint primero.");
+                return true;
+            }
+
+            player.sendMessage(ChatColor.GREEN + "Estado reiniciado para prueba SQL Battle.");
+            return true;
+        }
+
+        if (args.length < 3) {
+            sender.sendMessage(ChatColor.RED + "Uso: /sm sqlbattle reset <mundo>");
+            return true;
+        }
+
+        String worldName = args[2];
+        World world = Bukkit.getWorld(worldName);
+        if (world == null) {
+            sender.sendMessage(ChatColor.RED + "El mundo '" + worldName + "' no existe.");
+            return true;
+        }
+
+        if (!sqlBattleManager.isSQLBattle(worldName)) {
+            sender.sendMessage(ChatColor.RED + "El mundo '" + worldName + "' no está configurado como SQL Battle.");
+            return true;
+        }
+
+        int count = sqlBattleManager.resetWorldForDebug(world);
+        if (count < 0) {
+            sender.sendMessage(ChatColor.RED + "No se pudo resetear. Configura start/checkpoint primero.");
+            return true;
+        }
+
+        sender.sendMessage(ChatColor.GREEN + "Reset SQL Battle aplicado en '" + worldName + "'.");
+        sender.sendMessage(ChatColor.GRAY + "Jugadores reseteados: " + count);
+        return true;
+    }
+
+    private boolean handleSQLBattleForceStageCommand(CommandSender sender, String[] args) {
+        if (args.length < 3) {
+            sender.sendMessage(ChatColor.RED + "Uso: /sm sqlbattle forcestage <1|2|3> [jugador]");
+            return true;
+        }
+
+        int stage;
+        try {
+            stage = Integer.parseInt(args[2]);
+        } catch (NumberFormatException e) {
+            sender.sendMessage(ChatColor.RED + "La etapa debe ser un entero (1, 2 o 3).");
+            return true;
+        }
+
+        if (stage < 1 || stage > 3) {
+            sender.sendMessage(ChatColor.RED + "Etapa inválida. Usa 1, 2 o 3.");
+            return true;
+        }
+
+        Player target = null;
+        if (args.length >= 4) {
+            target = Bukkit.getPlayerExact(args[3]);
+            if (target == null) {
+                sender.sendMessage(ChatColor.RED + "Jugador no encontrado: " + args[3]);
+                return true;
+            }
+        } else if (sender instanceof Player) {
+            target = (Player) sender;
+        }
+
+        if (target == null) {
+            sender.sendMessage(ChatColor.RED + "Debes especificar un jugador desde consola.");
+            return true;
+        }
+
+        if (!sqlBattleManager.isSQLBattle(target.getWorld().getName())) {
+            sender.sendMessage(ChatColor.RED + "El jugador no está en un mundo SQL Battle.");
+            return true;
+        }
+
+        sqlBattleManager.setForcedStage(target, stage);
+        sender.sendMessage(ChatColor.GREEN + "Etapa forzada aplicada: " + stage + " a " + target.getName());
+        if (!target.equals(sender)) {
+            target.sendMessage(ChatColor.YELLOW + "Admin: etapa de oleada forzada a " + stage + " para pruebas.");
+        }
+        return true;
+    }
+
+    private boolean handleSQLBattleRespawnCheckpointCommand(CommandSender sender, String[] args) {
+        Player target = null;
+        if (args.length >= 3) {
+            target = Bukkit.getPlayerExact(args[2]);
+            if (target == null) {
+                sender.sendMessage(ChatColor.RED + "Jugador no encontrado: " + args[2]);
+                return true;
+            }
+        } else if (sender instanceof Player) {
+            target = (Player) sender;
+        }
+
+        if (target == null) {
+            sender.sendMessage(ChatColor.RED + "Uso: /sm sqlbattle respawncheckpoint [jugador]");
+            return true;
+        }
+
+        if (!sqlBattleManager.isSQLBattle(target.getWorld().getName())) {
+            sender.sendMessage(ChatColor.RED + "El jugador no está en un mundo SQL Battle.");
+            return true;
+        }
+
+        if (!sqlBattleManager.respawnAtCheckpoint(target)) {
+            sender.sendMessage(ChatColor.RED + "No hay checkpoint configurado para este SQL Battle.");
+            return true;
+        }
+
+        sender.sendMessage(ChatColor.GREEN + "Jugador enviado al checkpoint: " + target.getName());
+        if (!target.equals(sender)) {
+            target.sendMessage(ChatColor.YELLOW + "Admin: fuiste enviado al checkpoint de SQL Battle.");
+        }
+        return true;
+    }
+
+    private boolean handleSQLBattleHereCommand(Player player, String[] args) {
+        String worldName = player.getWorld().getName();
+
+        if (!sqlBattleManager.isSQLBattle(worldName)) {
+            player.sendMessage(ChatColor.RED + "Este mundo no es un SQL Battle. Usa '/sm create SQLBATTLE " + worldName + "'");
+            return true;
+        }
+
+        if (args.length < 3) {
+            player.sendMessage(ChatColor.RED + "Uso: /sm sqlbattle here <set|status>");
+            return true;
+        }
+
+        String action = args[2].toLowerCase();
+        switch (action) {
+            case "set":
+                return handleSQLBattleSetCommand(player, args);
+            case "status":
+                return sendSQLBattleInfo(player, sqlBattleManager.getSQLBattle(worldName));
+            default:
+                player.sendMessage(ChatColor.RED + "Uso: /sm sqlbattle here <set|status>");
+                return true;
+        }
+    }
+
+    private boolean handleSQLBattleSetCommand(Player player, String[] args) {
+        if (args.length < 4) {
+            player.sendMessage(ChatColor.RED + "Uso: /sm sqlbattle here set <start|checkpoint|prewave|enemyspawn>");
+            return true;
+        }
+
+        String worldName = player.getWorld().getName();
+        String setAction = args[3].toLowerCase();
+
+        switch (setAction) {
+            case "start":
+                if (sqlBattleManager.setStartLocation(worldName, player.getLocation())) {
+                    player.sendMessage(ChatColor.GREEN + "¡Punto de inicio SQL Battle configurado!");
+                    player.sendMessage(ChatColor.GRAY + "Ubicación: " + formatLocation(player.getLocation()));
+                } else {
+                    player.sendMessage(ChatColor.RED + "No se pudo guardar el punto de inicio.");
+                }
+                return true;
+
+            case "checkpoint":
+                if (sqlBattleManager.setCheckpointLocation(worldName, player.getLocation())) {
+                    player.sendMessage(ChatColor.GREEN + "¡Checkpoint SQL Battle configurado!");
+                    player.sendMessage(ChatColor.GRAY + "Ubicación: " + formatLocation(player.getLocation()));
+                    player.sendMessage(ChatColor.GRAY + "Este punto se usará para respawn durante pruebas.");
+                } else {
+                    player.sendMessage(ChatColor.RED + "No se pudo guardar el checkpoint.");
+                }
+                return true;
+
+            case "prewave":
+            case "prep":
+                if (sqlBattleManager.setPreparationLocation(worldName, player.getLocation())) {
+                    player.sendMessage(ChatColor.GREEN + "¡Zona de preparación SQL configurada!");
+                    player.sendMessage(ChatColor.GRAY + "Ubicación: " + formatLocation(player.getLocation()));
+                    player.sendMessage(ChatColor.GRAY + "Aquí debería comenzar la fase de consultas antes de cada oleada.");
+                } else {
+                    player.sendMessage(ChatColor.RED + "No se pudo guardar la zona de preparación.");
+                }
+                return true;
+
+            case "enemyspawn":
+                try {
+                    SessionManager sessionManager = WorldEdit.getInstance().getSessionManager();
+                    LocalSession session = sessionManager.get(BukkitAdapter.adapt(player));
+                    Region selection = session.getSelection(BukkitAdapter.adapt(player.getWorld()));
+
+                    if (selection == null) {
+                        player.sendMessage(ChatColor.RED + "No tienes una selección de WorldEdit activa. Usa //wand para seleccionar la zona.");
+                        return true;
+                    }
+
+                    com.sk89q.worldedit.math.BlockVector3 min = selection.getMinimumPoint();
+                    com.sk89q.worldedit.math.BlockVector3 max = selection.getMaximumPoint();
+                    Location pos1 = new Location(player.getWorld(), min.getX(), min.getY(), min.getZ());
+                    Location pos2 = new Location(player.getWorld(), max.getX(), max.getY(), max.getZ());
+
+                    if (sqlBattleManager.setEnemySpawnZone(worldName, pos1, pos2)) {
+                        player.sendMessage(ChatColor.GREEN + "¡Zona de spawn de enemigos configurada!");
+                        player.sendMessage(ChatColor.GRAY + "Desde: " + formatLocation(pos1));
+                        player.sendMessage(ChatColor.GRAY + "Hasta: " + formatLocation(pos2));
+                    } else {
+                        player.sendMessage(ChatColor.RED + "No se pudo guardar la zona de spawn de enemigos.");
+                    }
+                } catch (IncompleteRegionException e) {
+                    player.sendMessage(ChatColor.RED + "Selección incompleta. Selecciona ambas posiciones con //wand.");
+                } catch (Exception e) {
+                    player.sendMessage(ChatColor.RED + "Error al obtener la selección: " + e.getMessage());
+                }
+                return true;
+
+            default:
+                player.sendMessage(ChatColor.RED + "Uso: /sm sqlbattle here set <start|checkpoint|prewave|enemyspawn>");
+                return true;
+        }
+    }
+
+    private boolean handleSQLBattleStartCommand(CommandSender sender, String[] args) {
+        if (sender instanceof Player && args.length < 3) {
+            Player player = (Player) sender;
+            String worldName = player.getWorld().getName();
+
+            if (!sqlBattleManager.isSQLBattle(worldName)) {
+                player.sendMessage(ChatColor.RED + "Este mundo no es un SQL Battle.");
+                return true;
+            }
+
+            if (!sqlBattleManager.startForPlayer(player)) {
+                player.sendMessage(ChatColor.RED + "SQL Battle incompleto. Debes configurar start, checkpoint, prewave y enemyspawn.");
+                return true;
+            }
+
+            player.sendMessage(ChatColor.GREEN + "¡SQL Battle iniciado para prueba!");
+            player.sendMessage(ChatColor.GRAY + "Has sido movido al inicio y checkpoint aplicado.");
+            return true;
+        }
+
+        if (args.length < 3) {
+            sender.sendMessage(ChatColor.RED + "Uso: /sm sqlbattle start <mundo>");
+            return true;
+        }
+
+        String worldName = args[2];
+        World world = org.bukkit.Bukkit.getWorld(worldName);
+        if (world == null) {
+            sender.sendMessage(ChatColor.RED + "El mundo '" + worldName + "' no existe.");
+            return true;
+        }
+
+        if (!sqlBattleManager.isSQLBattle(worldName)) {
+            sender.sendMessage(ChatColor.RED + "El mundo '" + worldName + "' no está configurado como SQL Battle.");
+            return true;
+        }
+
+        int startedPlayers = sqlBattleManager.startForWorld(world);
+        if (startedPlayers < 0) {
+            sender.sendMessage(ChatColor.RED + "SQL Battle incompleto. Debes configurar start, checkpoint, prewave y enemyspawn.");
+            return true;
+        }
+
+        sender.sendMessage(ChatColor.GREEN + "SQL Battle iniciado en '" + worldName + "'.");
+        sender.sendMessage(ChatColor.GRAY + "Jugadores iniciados: " + startedPlayers);
+        return true;
+    }
+
+    private boolean handleSQLBattleListCommand(CommandSender sender) {
+        Map<String, SQLBattleWorld> allBattles = sqlBattleManager.getAllSQLBattles();
+
+        if (allBattles.isEmpty()) {
+            sender.sendMessage(ChatColor.YELLOW + "No hay mundos SQL Battle configurados.");
+            return true;
+        }
+
+        sender.sendMessage(ChatColor.GREEN + "=== SQL Battles ===");
+        for (Map.Entry<String, SQLBattleWorld> entry : allBattles.entrySet()) {
+            SQLBattleWorld battleWorld = entry.getValue();
+            String ready = battleWorld.isConfigured() ? ChatColor.GREEN + "LISTO" : ChatColor.YELLOW + "INCOMPLETO";
+            sender.sendMessage(ChatColor.WHITE + "• " + entry.getKey() + ChatColor.GRAY + " - " + ready);
+        }
+        sender.sendMessage(ChatColor.GRAY + "Total: " + allBattles.size() + " mundos SQL Battle");
+        return true;
+    }
+
+    private boolean handleSQLBattleInfoCommand(CommandSender sender, String[] args) {
+        String worldName;
+        if (args.length >= 3) {
+            worldName = args[2];
+        } else if (sender instanceof Player) {
+            worldName = ((Player) sender).getWorld().getName();
+        } else {
+            sender.sendMessage(ChatColor.RED + "Uso: /sm sqlbattle info <mundo>");
+            return true;
+        }
+
+        SQLBattleWorld battleWorld = sqlBattleManager.getSQLBattle(worldName);
+        if (battleWorld == null) {
+            sender.sendMessage(ChatColor.RED + "El mundo '" + worldName + "' no está configurado como SQL Battle.");
+            return true;
+        }
+
+        return sendSQLBattleInfo(sender, battleWorld);
+    }
+
+    private boolean handleSQLBattleRemoveCommand(CommandSender sender, String[] args) {
+        String worldName;
+        if (args.length >= 3) {
+            worldName = args[2];
+        } else if (sender instanceof Player) {
+            worldName = ((Player) sender).getWorld().getName();
+        } else {
+            sender.sendMessage(ChatColor.RED + "Uso: /sm sqlbattle remove <mundo>");
+            return true;
+        }
+
+        if (!sqlBattleManager.isSQLBattle(worldName)) {
+            sender.sendMessage(ChatColor.RED + "El mundo '" + worldName + "' no es un SQL Battle.");
+            return true;
+        }
+
+        if (sqlBattleManager.removeSQLBattle(worldName)) {
+            sender.sendMessage(ChatColor.GREEN + "SQL Battle eliminado del mundo '" + worldName + "'.");
+        } else {
+            sender.sendMessage(ChatColor.RED + "No se pudo eliminar el SQL Battle del mundo '" + worldName + "'.");
+        }
+        return true;
+    }
+
+    private boolean sendSQLBattleInfo(CommandSender sender, SQLBattleWorld battleWorld) {
+        sender.sendMessage(ChatColor.GREEN + "=== SQL Battle: " + battleWorld.getWorldName() + " ===");
+        sender.sendMessage(ChatColor.WHITE + "Activo: " + (battleWorld.isActive() ? ChatColor.GREEN + "sí" : ChatColor.RED + "no"));
+        sender.sendMessage(ChatColor.WHITE + "Configuración completa: " + (battleWorld.isConfigured() ? ChatColor.GREEN + "sí" : ChatColor.YELLOW + "no"));
+        sender.sendMessage(ChatColor.WHITE + "Oleada activa: " + (sqlBattleManager.isWaveActive(battleWorld.getWorldName()) ? ChatColor.GREEN + "sí" : ChatColor.YELLOW + "no"));
+        Difficulty currentDifficulty = sqlBattleManager.getWorldDifficulty(battleWorld.getWorldName());
+        sender.sendMessage(ChatColor.WHITE + "Dificultad mundo: " + (currentDifficulty != null ? ChatColor.GRAY + currentDifficulty.name() : ChatColor.RED + "desconocida"));
+        sender.sendMessage(ChatColor.WHITE + "Inicio: " + formatOptionalLocation(battleWorld.getStartLocation()));
+        sender.sendMessage(ChatColor.WHITE + "Checkpoint: " + formatOptionalLocation(battleWorld.getCheckpointLocation()));
+        sender.sendMessage(ChatColor.WHITE + "Preparación: " + formatOptionalLocation(battleWorld.getPreparationLocation()));
+        sender.sendMessage(ChatColor.WHITE + "Spawn enemigo: " + formatOptionalRegion(battleWorld.getEnemySpawnPos1(), battleWorld.getEnemySpawnPos2()));
+        return true;
     }
     
     /**
