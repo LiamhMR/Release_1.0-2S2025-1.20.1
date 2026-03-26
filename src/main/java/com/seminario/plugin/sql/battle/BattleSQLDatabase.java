@@ -3,6 +3,7 @@ package com.seminario.plugin.sql.battle;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
@@ -142,6 +143,34 @@ public class BattleSQLDatabase {
             return connection != null && !connection.isClosed();
         } catch (SQLException e) {
             return false;
+        }
+    }
+
+    public int getPlayerActionPoints() throws SQLException {
+        return getPlayerIntField("puntos_accion", 5);
+    }
+
+    public void setPlayerActionPoints(int points) throws SQLException {
+        try (PreparedStatement ps = connection.prepareStatement(
+                "UPDATE jugador SET puntos_accion = ? WHERE id = 1")) {
+            ps.setInt(1, Math.max(0, points));
+            ps.executeUpdate();
+        }
+    }
+
+    public int getCurrentWaveNumber() throws SQLException {
+        return getPlayerIntField("oleada_actual", 1);
+    }
+
+    public int getCurrentStage() throws SQLException {
+        return getPlayerIntField("etapa_actual", 0);
+    }
+
+    public void setCurrentStage(int stage) throws SQLException {
+        try (PreparedStatement ps = connection.prepareStatement(
+                "UPDATE jugador SET etapa_actual = ? WHERE id = 1")) {
+            ps.setInt(1, Math.max(0, Math.min(stage, 3)));
+            ps.executeUpdate();
         }
     }
 
@@ -334,5 +363,15 @@ public class BattleSQLDatabase {
                 }
             }
         }
+    }
+
+    private int getPlayerIntField(String columnName, int defaultValue) throws SQLException {
+        try (Statement stmt = connection.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT " + columnName + " FROM jugador WHERE id = 1")) {
+            if (rs.next()) {
+                return rs.getInt(1);
+            }
+        }
+        return defaultValue;
     }
 }

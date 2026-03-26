@@ -2,8 +2,12 @@ package com.seminario.plugin.config;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.logging.Logger;
 
 import org.bukkit.Bukkit;
@@ -33,8 +37,11 @@ public class ConfigManager {
     private FileConfiguration sqlBattlesConfig;
     private FileConfiguration sqlDungeonsConfig;
     private Map<String, MenuZone> menuZones;
+    private final Set<String> pendingMenuZones;
     private Map<String, SQLBattleWorld> sqlBattles;
+    private final Set<String> pendingSQLBattles;
     private Map<String, SQLDungeonWorld> sqlDungeons;
+    private final Set<String> pendingSQLDungeons;
     
     public ConfigManager(JavaPlugin plugin) {
         this.plugin = plugin;
@@ -43,8 +50,11 @@ public class ConfigManager {
         this.sqlBattlesFile = new File(plugin.getDataFolder(), "sqlbattle.yml");
         this.sqlDungeonsFile = new File(plugin.getDataFolder(), "sqldungeons.yml");
         this.menuZones = new HashMap<>();
+        this.pendingMenuZones = new HashSet<>();
         this.sqlBattles = new HashMap<>();
+        this.pendingSQLBattles = new HashSet<>();
         this.sqlDungeons = new HashMap<>();
+        this.pendingSQLDungeons = new HashSet<>();
         
         loadConfig();
         loadSQLBattles();
@@ -78,6 +88,7 @@ public class ConfigManager {
      */
     private void loadMenuZones() {
         menuZones.clear();
+        pendingMenuZones.clear();
         
         ConfigurationSection zonesSection = config.getConfigurationSection("menuzones");
         if (zonesSection == null) {
@@ -86,25 +97,71 @@ public class ConfigManager {
         }
         
         for (String zoneName : zonesSection.getKeys(false)) {
-            try {
-                ConfigurationSection zoneSection = zonesSection.getConfigurationSection(zoneName);
-                if (zoneSection != null) {
-                    Map<String, Object> zoneData = new HashMap<>();
-                    for (String key : zoneSection.getKeys(true)) {
-                        zoneData.put(key, zoneSection.get(key));
-                    }
-                    zoneData.put("name", zoneName);
-                    
-                    MenuZone zone = MenuZone.deserialize(zoneData);
-                    menuZones.put(zoneName, zone);
-                    logger.info("Loaded menu zone: " + zoneName);
-                }
-            } catch (Exception e) {
-                logger.warning("Failed to load menu zone '" + zoneName + "': " + e.getMessage());
+            ConfigurationSection zoneSection = zonesSection.getConfigurationSection(zoneName);
+            if (zoneSection != null) {
+                loadSingleMenuZone(zoneName, zoneSection, true);
             }
         }
         
         logger.info("Loaded " + menuZones.size() + " menu zones");
+        if (!pendingMenuZones.isEmpty()) {
+            logger.warning("Deferred loading for " + pendingMenuZones.size() + " menu zones because their worlds are not loaded yet");
+        }
+    }
+
+    private void loadSingleMenuZone(String zoneName, ConfigurationSection zoneSection, boolean allowPending) {
+        try {
+            Map<String, Object> zoneData = new HashMap<>();
+            for (String key : zoneSection.getKeys(true)) {
+                zoneData.put(key, zoneSection.get(key));
+            }
+            zoneData.put("name", zoneName);
+
+            MenuZone zone = MenuZone.deserialize(zoneData);
+            menuZones.put(zoneName, zone);
+            pendingMenuZones.remove(zoneName);
+            logger.info("Loaded menu zone: " + zoneName);
+        } catch (Exception e) {
+            if (allowPending && shouldDeferMenuZoneLoad(e)) {
+                pendingMenuZones.add(zoneName);
+                logger.warning("Deferred menu zone '" + zoneName + "' until world is loaded: " + e.getMessage());
+                return;
+            }
+            logger.warning("Failed to load menu zone '" + zoneName + "': " + e.getMessage());
+        }
+    }
+
+    private boolean shouldDeferMenuZoneLoad(Exception exception) {
+        String message = exception.getMessage();
+        if (message == null) {
+            return false;
+        }
+        String normalized = message.toLowerCase();
+        return normalized.contains("world") && normalized.contains("not found");
+    }
+
+    private void retryPendingMenuZones() {
+        if (pendingMenuZones.isEmpty()) {
+            return;
+        }
+
+        ConfigurationSection zonesSection = config.getConfigurationSection("menuzones");
+        if (zonesSection == null) {
+            pendingMenuZones.clear();
+            return;
+        }
+
+        Set<String> pendingCopy = new HashSet<>(pendingMenuZones);
+        for (String zoneName : pendingCopy) {
+            try {
+                ConfigurationSection zoneSection = zonesSection.getConfigurationSection(zoneName);
+                if (zoneSection != null) {
+                    loadSingleMenuZone(zoneName, zoneSection, false);
+                }
+            } catch (Exception e) {
+                logger.warning("Failed deferred menu zone load for '" + zoneName + "': " + e.getMessage());
+            }
+        }
     }
     
     /**
@@ -112,6 +169,33 @@ public class ConfigManager {
      */
     public void saveConfig() {
         try {
+            retryPendingMenuZones();
+
+            ConfigurationSection existingZones = config.getConfigurationSection("menuzones");
+            boolean hasExistingZones = existingZones != null && !existingZones.getKeys(false).isEmpty();
+
+            // Safety guard: never wipe persisted zones if memory cache is unexpectedly empty.
+            if (menuZones.isEmpty() && pendingMenuZones.isEmpty() && hasExistingZones) {
+                logger.warning("Skipping menuzones save to prevent data loss: in-memory cache is empty but file has zones");
+                return;
+            }
+
+            Map<String, Map<String, Object>> preservedPendingZoneData = new HashMap<>();
+            if (existingZones != null) {
+                for (String pendingZone : pendingMenuZones) {
+                    ConfigurationSection pendingSection = existingZones.getConfigurationSection(pendingZone);
+                    if (pendingSection == null) {
+                        continue;
+                    }
+
+                    Map<String, Object> pendingData = new HashMap<>();
+                    for (String key : pendingSection.getKeys(true)) {
+                        pendingData.put(key, pendingSection.get(key));
+                    }
+                    preservedPendingZoneData.put(pendingZone, pendingData);
+                }
+            }
+
             // Clear existing zones section
             config.set("menuzones", null);
             
@@ -124,6 +208,14 @@ public class ConfigManager {
                     if (!entry.getKey().equals("name")) { // Don't save name as it's the key
                         config.set(path + "." + entry.getKey(), entry.getValue());
                     }
+                }
+            }
+
+            // Preserve zones still pending because their worlds are not loaded yet.
+            for (Map.Entry<String, Map<String, Object>> pendingEntry : preservedPendingZoneData.entrySet()) {
+                String pendingZoneName = pendingEntry.getKey();
+                for (Map.Entry<String, Object> dataEntry : pendingEntry.getValue().entrySet()) {
+                    config.set("menuzones." + pendingZoneName + "." + dataEntry.getKey(), dataEntry.getValue());
                 }
             }
             
@@ -171,6 +263,7 @@ public class ConfigManager {
      * @return The menu zone or null if not found
      */
     public MenuZone getMenuZone(String name) {
+        retryPendingMenuZones();
         return menuZones.get(name);
     }
     
@@ -179,6 +272,7 @@ public class ConfigManager {
      * @return Map of all menu zones
      */
     public Map<String, MenuZone> getAllMenuZones() {
+        retryPendingMenuZones();
         return new HashMap<>(menuZones);
     }
     
@@ -188,6 +282,7 @@ public class ConfigManager {
      * @return true if exists
      */
     public boolean hasMenuZone(String name) {
+        retryPendingMenuZones();
         return menuZones.containsKey(name);
     }
     
@@ -223,6 +318,7 @@ public class ConfigManager {
 
     private void loadSQLBattles() {
         sqlBattles.clear();
+        pendingSQLBattles.clear();
 
         if (!sqlBattlesFile.exists()) {
             try {
@@ -234,7 +330,15 @@ public class ConfigManager {
             }
         }
 
-        sqlBattlesConfig = YamlConfiguration.loadConfiguration(sqlBattlesFile);
+        sanitizeLegacySQLBattlesFile();
+
+        try {
+            sqlBattlesConfig = YamlConfiguration.loadConfiguration(sqlBattlesFile);
+        } catch (Exception e) {
+            sqlBattlesConfig = new YamlConfiguration();
+            logger.warning("Failed to parse sqlbattle.yml; SQL battles will be skipped this boot: " + e.getMessage());
+            return;
+        }
 
         ConfigurationSection battlesSection = sqlBattlesConfig.getConfigurationSection("sqlbattles");
         if (battlesSection == null) {
@@ -243,24 +347,98 @@ public class ConfigManager {
         }
 
         for (String worldName : battlesSection.getKeys(false)) {
-            try {
-                ConfigurationSection battleSection = battlesSection.getConfigurationSection(worldName);
-                if (battleSection != null) {
-                    Map<String, Object> battleData = convertConfigurationSectionToMap(battleSection);
-                    SQLBattleWorld battleWorld = SQLBattleWorld.deserialize(battleData);
-                    sqlBattles.put(worldName, battleWorld);
-                    logger.info("Loaded SQL battle: " + worldName);
-                }
-            } catch (Exception e) {
-                logger.warning("Failed to load SQL battle '" + worldName + "': " + e.getMessage());
+            ConfigurationSection battleSection = battlesSection.getConfigurationSection(worldName);
+            if (battleSection != null) {
+                loadSingleSQLBattle(worldName, battleSection, true);
             }
         }
 
         logger.info("Loaded " + sqlBattles.size() + " SQL battles");
+        if (!pendingSQLBattles.isEmpty()) {
+            logger.warning("Deferred loading for " + pendingSQLBattles.size() + " SQL battles because their worlds are not loaded yet");
+        }
+    }
+
+    private void sanitizeLegacySQLBattlesFile() {
+        try {
+            String original = Files.readString(sqlBattlesFile.toPath(), StandardCharsets.UTF_8);
+            String sanitized = original
+                .replaceAll("(?m)^\\s*==:\\s*org\\.bukkit\\.Location\\s*\\R", "")
+                .replaceAll("(?m)^\\s*==:\\s*com\\.seminario\\.plugin\\.model\\.(SQLBattleWorld)\\s*\\R", "");
+
+            if (!original.equals(sanitized)) {
+                Files.writeString(sqlBattlesFile.toPath(), sanitized, StandardCharsets.UTF_8);
+                logger.warning("Migrated legacy sqlbattle.yml format by removing legacy type markers");
+            }
+        } catch (IOException e) {
+            logger.warning("Could not sanitize sqlbattle.yml before loading: " + e.getMessage());
+        }
+    }
+
+    private void loadSingleSQLBattle(String worldName, ConfigurationSection battleSection, boolean allowPending) {
+        try {
+            Map<String, Object> battleData = convertConfigurationSectionToMap(battleSection);
+            if (allowPending && containsUnloadedWorldReference(battleData)) {
+                pendingSQLBattles.add(worldName);
+                logger.warning("Deferred SQL battle '" + worldName + "' until world is loaded");
+                return;
+            }
+
+            SQLBattleWorld battleWorld = SQLBattleWorld.deserialize(battleData);
+            sqlBattles.put(worldName, battleWorld);
+            pendingSQLBattles.remove(worldName);
+            logger.info("Loaded SQL battle: " + worldName);
+        } catch (Exception e) {
+            logger.warning("Failed to load SQL battle '" + worldName + "': " + e.getMessage());
+        }
+    }
+
+    private void retryPendingSQLBattles() {
+        if (pendingSQLBattles.isEmpty()) {
+            return;
+        }
+
+        ConfigurationSection battlesSection = sqlBattlesConfig.getConfigurationSection("sqlbattles");
+        if (battlesSection == null) {
+            pendingSQLBattles.clear();
+            return;
+        }
+
+        Set<String> pendingCopy = new HashSet<>(pendingSQLBattles);
+        for (String worldName : pendingCopy) {
+            ConfigurationSection battleSection = battlesSection.getConfigurationSection(worldName);
+            if (battleSection != null) {
+                loadSingleSQLBattle(worldName, battleSection, false);
+            }
+        }
     }
 
     public void saveSQLBattles() {
         try {
+            retryPendingSQLBattles();
+
+            ConfigurationSection existingBattles = sqlBattlesConfig.getConfigurationSection("sqlbattles");
+            boolean hasExistingBattles = existingBattles != null && !existingBattles.getKeys(false).isEmpty();
+
+            // Safety guard: avoid wiping persisted SQL battles if runtime cache is unexpectedly empty.
+            if (sqlBattles.isEmpty() && pendingSQLBattles.isEmpty() && hasExistingBattles) {
+                logger.warning("Skipping sqlbattle save to prevent data loss: in-memory cache is empty but file has battles");
+                return;
+            }
+
+            Map<String, Map<String, Object>> preservedPendingBattleData = new HashMap<>();
+            if (existingBattles != null) {
+                for (String pendingBattle : pendingSQLBattles) {
+                    ConfigurationSection pendingSection = existingBattles.getConfigurationSection(pendingBattle);
+                    if (pendingSection == null) {
+                        continue;
+                    }
+
+                    Map<String, Object> pendingData = convertConfigurationSectionToMap(pendingSection);
+                    preservedPendingBattleData.put(pendingBattle, pendingData);
+                }
+            }
+
             sqlBattlesConfig.set("sqlbattles", null);
 
             for (Map.Entry<String, SQLBattleWorld> entry : sqlBattles.entrySet()) {
@@ -270,6 +448,14 @@ public class ConfigManager {
                 Map<String, Object> serializedData = battleWorld.serialize();
                 for (Map.Entry<String, Object> dataEntry : serializedData.entrySet()) {
                     sqlBattlesConfig.set("sqlbattles." + worldName + "." + dataEntry.getKey(), dataEntry.getValue());
+                }
+            }
+
+            // Preserve battles still pending because their worlds are not loaded yet.
+            for (Map.Entry<String, Map<String, Object>> pendingEntry : preservedPendingBattleData.entrySet()) {
+                String pendingBattleName = pendingEntry.getKey();
+                for (Map.Entry<String, Object> dataEntry : pendingEntry.getValue().entrySet()) {
+                    sqlBattlesConfig.set("sqlbattles." + pendingBattleName + "." + dataEntry.getKey(), dataEntry.getValue());
                 }
             }
 
@@ -301,14 +487,17 @@ public class ConfigManager {
     }
 
     public SQLBattleWorld getSQLBattle(String worldName) {
+        retryPendingSQLBattles();
         return sqlBattles.get(worldName);
     }
 
     public Map<String, SQLBattleWorld> getAllSQLBattles() {
+        retryPendingSQLBattles();
         return new HashMap<>(sqlBattles);
     }
 
     public boolean isSQLBattle(String worldName) {
+        retryPendingSQLBattles();
         return sqlBattles.containsKey(worldName);
     }
 
@@ -324,6 +513,7 @@ public class ConfigManager {
      */
     private void loadSQLDungeons() {
         sqlDungeons.clear();
+        pendingSQLDungeons.clear();
         
         if (!sqlDungeonsFile.exists()) {
             try {
@@ -334,8 +524,16 @@ public class ConfigManager {
                 return;
             }
         }
+
+        sanitizeLegacySQLDungeonsFile();
         
-        sqlDungeonsConfig = YamlConfiguration.loadConfiguration(sqlDungeonsFile);
+        try {
+            sqlDungeonsConfig = YamlConfiguration.loadConfiguration(sqlDungeonsFile);
+        } catch (Exception e) {
+            sqlDungeonsConfig = new YamlConfiguration();
+            logger.warning("Failed to parse sqldungeons.yml; SQL dungeons will be skipped this boot: " + e.getMessage());
+            return;
+        }
         
         ConfigurationSection dungeonsSection = sqlDungeonsConfig.getConfigurationSection("sqldungeons");
         if (dungeonsSection == null) {
@@ -344,21 +542,70 @@ public class ConfigManager {
         }
         
         for (String worldName : dungeonsSection.getKeys(false)) {
-            try {
-                ConfigurationSection dungeonSection = dungeonsSection.getConfigurationSection(worldName);
-                if (dungeonSection != null) {
-                    Map<String, Object> dungeonData = convertConfigurationSectionToMap(dungeonSection);
-                    
-                    SQLDungeonWorld sqlWorld = SQLDungeonWorld.deserialize(dungeonData);
-                    sqlDungeons.put(worldName, sqlWorld);
-                    logger.info("Loaded SQL dungeon: " + worldName);
-                }
-            } catch (Exception e) {
-                logger.warning("Failed to load SQL dungeon '" + worldName + "': " + e.getMessage());
+            ConfigurationSection dungeonSection = dungeonsSection.getConfigurationSection(worldName);
+            if (dungeonSection != null) {
+                loadSingleSQLDungeon(worldName, dungeonSection, true);
             }
         }
         
         logger.info("Loaded " + sqlDungeons.size() + " SQL dungeons");
+        if (!pendingSQLDungeons.isEmpty()) {
+            logger.warning("Deferred loading for " + pendingSQLDungeons.size() + " SQL dungeons because their worlds are not loaded yet");
+        }
+    }
+
+    private void sanitizeLegacySQLDungeonsFile() {
+        try {
+            String original = Files.readString(sqlDungeonsFile.toPath(), StandardCharsets.UTF_8);
+            String sanitized = original
+                .replaceAll("(?m)^\\s*==:\\s*org\\.bukkit\\.Location\\s*\\R", "")
+                .replaceAll("(?m)^\\s*==:\\s*com\\.seminario\\.plugin\\.model\\.(SQLDungeonWorld|SQLLevel)\\s*\\R", "");
+
+            if (!original.equals(sanitized)) {
+                Files.writeString(sqlDungeonsFile.toPath(), sanitized, StandardCharsets.UTF_8);
+                logger.warning("Migrated legacy sqldungeons.yml format by removing legacy type markers");
+            }
+        } catch (IOException e) {
+            logger.warning("Could not sanitize sqldungeons.yml before loading: " + e.getMessage());
+        }
+    }
+
+    private void loadSingleSQLDungeon(String worldName, ConfigurationSection dungeonSection, boolean allowPending) {
+        try {
+            Map<String, Object> dungeonData = convertConfigurationSectionToMap(dungeonSection);
+            if (allowPending && containsUnloadedWorldReference(dungeonData)) {
+                pendingSQLDungeons.add(worldName);
+                logger.warning("Deferred SQL dungeon '" + worldName + "' until world is loaded");
+                return;
+            }
+
+            SQLDungeonWorld sqlWorld = SQLDungeonWorld.deserialize(dungeonData);
+            sqlDungeons.put(worldName, sqlWorld);
+            pendingSQLDungeons.remove(worldName);
+            logger.info("Loaded SQL dungeon: " + worldName);
+        } catch (Exception e) {
+            logger.warning("Failed to load SQL dungeon '" + worldName + "': " + e.getMessage());
+        }
+    }
+
+    private void retryPendingSQLDungeons() {
+        if (pendingSQLDungeons.isEmpty()) {
+            return;
+        }
+
+        ConfigurationSection dungeonsSection = sqlDungeonsConfig.getConfigurationSection("sqldungeons");
+        if (dungeonsSection == null) {
+            pendingSQLDungeons.clear();
+            return;
+        }
+
+        Set<String> pendingCopy = new HashSet<>(pendingSQLDungeons);
+        for (String worldName : pendingCopy) {
+            ConfigurationSection dungeonSection = dungeonsSection.getConfigurationSection(worldName);
+            if (dungeonSection != null) {
+                loadSingleSQLDungeon(worldName, dungeonSection, false);
+            }
+        }
     }
     
     /**
@@ -366,6 +613,30 @@ public class ConfigManager {
      */
     public void saveSQLDungeons() {
         try {
+            retryPendingSQLDungeons();
+
+            ConfigurationSection existingDungeons = sqlDungeonsConfig.getConfigurationSection("sqldungeons");
+            boolean hasExistingDungeons = existingDungeons != null && !existingDungeons.getKeys(false).isEmpty();
+
+            // Safety guard: avoid wiping persisted SQL dungeons if runtime cache is unexpectedly empty.
+            if (sqlDungeons.isEmpty() && pendingSQLDungeons.isEmpty() && hasExistingDungeons) {
+                logger.warning("Skipping sqldungeons save to prevent data loss: in-memory cache is empty but file has dungeons");
+                return;
+            }
+
+            Map<String, Map<String, Object>> preservedPendingDungeonData = new HashMap<>();
+            if (existingDungeons != null) {
+                for (String pendingDungeon : pendingSQLDungeons) {
+                    ConfigurationSection pendingSection = existingDungeons.getConfigurationSection(pendingDungeon);
+                    if (pendingSection == null) {
+                        continue;
+                    }
+
+                    Map<String, Object> pendingData = convertConfigurationSectionToMap(pendingSection);
+                    preservedPendingDungeonData.put(pendingDungeon, pendingData);
+                }
+            }
+
             // Clear existing dungeons section
             sqlDungeonsConfig.set("sqldungeons", null);
             
@@ -377,6 +648,14 @@ public class ConfigManager {
                 Map<String, Object> serializedData = sqlWorld.serialize();
                 for (Map.Entry<String, Object> dataEntry : serializedData.entrySet()) {
                     sqlDungeonsConfig.set("sqldungeons." + worldName + "." + dataEntry.getKey(), dataEntry.getValue());
+                }
+            }
+
+            // Preserve dungeons still pending because their worlds are not loaded yet.
+            for (Map.Entry<String, Map<String, Object>> pendingEntry : preservedPendingDungeonData.entrySet()) {
+                String pendingDungeonName = pendingEntry.getKey();
+                for (Map.Entry<String, Object> dataEntry : pendingEntry.getValue().entrySet()) {
+                    sqlDungeonsConfig.set("sqldungeons." + pendingDungeonName + "." + dataEntry.getKey(), dataEntry.getValue());
                 }
             }
             
@@ -423,6 +702,7 @@ public class ConfigManager {
      * @return SQLDungeonWorld or null if not found
      */
     public SQLDungeonWorld getSQLDungeon(String worldName) {
+        retryPendingSQLDungeons();
         return sqlDungeons.get(worldName);
     }
     
@@ -431,6 +711,7 @@ public class ConfigManager {
      * @return Map of world names to SQL dungeon worlds
      */
     public Map<String, SQLDungeonWorld> getAllSQLDungeons() {
+        retryPendingSQLDungeons();
         return new HashMap<>(sqlDungeons);
     }
     
@@ -440,6 +721,7 @@ public class ConfigManager {
      * @return true if it's a SQL dungeon
      */
     public boolean isSQLDungeon(String worldName) {
+        retryPendingSQLDungeons();
         return sqlDungeons.containsKey(worldName);
     }
     
@@ -472,6 +754,30 @@ public class ConfigManager {
         }
         
         return map;
+    }
+
+    private boolean containsUnloadedWorldReference(Map<String, Object> map) {
+        for (Map.Entry<String, Object> entry : map.entrySet()) {
+            String key = entry.getKey();
+            Object value = entry.getValue();
+
+            if ("world".equalsIgnoreCase(key) && value instanceof String) {
+                String worldName = (String) value;
+                if (!worldName.isEmpty() && Bukkit.getWorld(worldName) == null) {
+                    return true;
+                }
+            }
+
+            if (value instanceof Map) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> nestedMap = (Map<String, Object>) value;
+                if (containsUnloadedWorldReference(nestedMap)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
     
     /**

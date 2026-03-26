@@ -3,7 +3,9 @@ package com.seminario.plugin.model;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.bukkit.Bukkit;
 import org.bukkit.Location;
+import org.bukkit.World;
 import org.bukkit.configuration.serialization.ConfigurationSerializable;
 
 /**
@@ -141,8 +143,8 @@ public class SQLLevel implements ConfigurationSerializable {
         Map<String, Object> data = new HashMap<>();
         data.put("levelNumber", levelNumber);
         data.put("difficulty", difficulty.name());
-        data.put("checkpointLocation", checkpointLocation);
-        data.put("entryLocation", entryLocation);
+        data.put("checkpointLocation", serializeLocation(checkpointLocation));
+        data.put("entryLocation", serializeLocation(entryLocation));
         data.put("challenge", challenge);
         data.put("expectedQuery", expectedQuery);
         data.put("hint1", hint1);
@@ -155,17 +157,96 @@ public class SQLLevel implements ConfigurationSerializable {
     @SuppressWarnings("unchecked")
     public static SQLLevel deserialize(Map<String, Object> data) {
         SQLLevel level = new SQLLevel();
-        level.levelNumber = (Integer) data.get("levelNumber");
-        level.difficulty = SQLDifficulty.valueOf((String) data.get("difficulty"));
-        level.checkpointLocation = (Location) data.get("checkpointLocation");
-        level.entryLocation = (Location) data.get("entryLocation");
+        level.levelNumber = asInt(data.get("levelNumber"), 0);
+
+        String difficultyName = String.valueOf(data.getOrDefault("difficulty", SQLDifficulty.BASIC.name()));
+        try {
+            level.difficulty = SQLDifficulty.valueOf(difficultyName);
+        } catch (IllegalArgumentException ex) {
+            level.difficulty = SQLDifficulty.BASIC;
+        }
+
+        level.checkpointLocation = deserializeLocation(data.get("checkpointLocation"));
+        level.entryLocation = deserializeLocation(data.get("entryLocation"));
         level.challenge = (String) data.get("challenge");
         level.expectedQuery = (String) data.get("expectedQuery");
         level.hint1 = (String) data.get("hint1");
         level.hint2 = (String) data.get("hint2");
         level.hint3 = (String) data.get("hint3");
-        level.hasEntry = (Boolean) data.getOrDefault("hasEntry", false);
+        level.hasEntry = (Boolean) data.getOrDefault("hasEntry", level.entryLocation != null);
         return level;
+    }
+
+    private static Map<String, Object> serializeLocation(Location location) {
+        if (location == null || location.getWorld() == null) {
+            return null;
+        }
+
+        Map<String, Object> map = new HashMap<>();
+        map.put("world", location.getWorld().getName());
+        map.put("x", location.getX());
+        map.put("y", location.getY());
+        map.put("z", location.getZ());
+        map.put("yaw", location.getYaw());
+        map.put("pitch", location.getPitch());
+        return map;
+    }
+
+    private static Location deserializeLocation(Object obj) {
+        if (obj == null) {
+            return null;
+        }
+
+        if (obj instanceof Location) {
+            return ((Location) obj).clone();
+        }
+
+        if (!(obj instanceof Map<?, ?>)) {
+            return null;
+        }
+
+        Map<?, ?> map = (Map<?, ?>) obj;
+        String worldName = String.valueOf(map.get("world"));
+        World world = Bukkit.getWorld(worldName);
+        if (world == null) {
+            return null;
+        }
+
+        double x = asDouble(map.get("x"), 0.0D);
+        double y = asDouble(map.get("y"), 0.0D);
+        double z = asDouble(map.get("z"), 0.0D);
+        float yaw = (float) asDouble(map.get("yaw"), 0.0D);
+        float pitch = (float) asDouble(map.get("pitch"), 0.0D);
+
+        return new Location(world, x, y, z, yaw, pitch);
+    }
+
+    private static int asInt(Object value, int defaultValue) {
+        if (value instanceof Number) {
+            return ((Number) value).intValue();
+        }
+        if (value == null) {
+            return defaultValue;
+        }
+        try {
+            return Integer.parseInt(String.valueOf(value));
+        } catch (NumberFormatException e) {
+            return defaultValue;
+        }
+    }
+
+    private static double asDouble(Object value, double defaultValue) {
+        if (value instanceof Number) {
+            return ((Number) value).doubleValue();
+        }
+        if (value == null) {
+            return defaultValue;
+        }
+        try {
+            return Double.parseDouble(String.valueOf(value));
+        } catch (NumberFormatException e) {
+            return defaultValue;
+        }
     }
     
     @Override

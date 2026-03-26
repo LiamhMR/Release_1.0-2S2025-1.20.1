@@ -185,8 +185,18 @@ public class SQLDungeonWorld implements ConfigurationSerializable {
                     }
                 }
                 
-                if (levelNum != null && entry.getValue() instanceof SQLLevel) {
-                    world.levels.put(levelNum, (SQLLevel) entry.getValue());
+                if (levelNum == null) {
+                    continue;
+                }
+
+                Object levelObj = entry.getValue();
+                if (levelObj instanceof SQLLevel) {
+                    world.levels.put(levelNum, (SQLLevel) levelObj);
+                } else if (levelObj instanceof Map<?, ?>) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> levelData = (Map<String, Object>) levelObj;
+                    SQLLevel parsed = SQLLevel.deserialize(levelData);
+                    world.levels.put(levelNum, parsed);
                 }
             }
         } else {

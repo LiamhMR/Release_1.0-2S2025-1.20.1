@@ -10,6 +10,7 @@ import com.seminario.plugin.listener.FireworkTriggerListener;
 import com.seminario.plugin.listener.HarryNPCListener;
 import com.seminario.plugin.listener.LobbyPlayerListener;
 import com.seminario.plugin.listener.PlayerEventListener;
+import com.seminario.plugin.listener.SQLBattlePreparationListener;
 import com.seminario.plugin.listener.SQLEntryListener;
 import com.seminario.plugin.manager.FireworkManager;
 import com.seminario.plugin.manager.FixSlideManager;
@@ -108,6 +109,9 @@ public class App extends JavaPlugin {
         
         // Register SQL entry listener
         getServer().getPluginManager().registerEvents(new SQLEntryListener(sqlDungeonManager), this);
+
+        // Register SQL Battle preparation listener for chat-based query gameplay
+        getServer().getPluginManager().registerEvents(new SQLBattlePreparationListener(sqlBattleManager, this), this);
         
         // Register SQL world listener for auto-start functionality
         getServer().getPluginManager().registerEvents(new com.seminario.plugin.listeners.SQLWorldListener(sqlDungeonManager), this);
@@ -211,6 +215,10 @@ public class App extends JavaPlugin {
         // Clean up SQL Dungeon system
         if (sqlDungeonManager != null) {
             sqlDungeonManager.shutdown();
+        }
+
+        if (sqlBattleManager != null) {
+            sqlBattleManager.shutdown();
         }
         
         // Clean up Lobby system

@@ -3,7 +3,9 @@ package com.seminario.plugin.model;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.bukkit.Bukkit;
 import org.bukkit.Location;
+import org.bukkit.World;
 import org.bukkit.configuration.serialization.ConfigurationSerializable;
 
 /**
@@ -122,11 +124,11 @@ public class SQLBattleWorld implements ConfigurationSerializable {
         data.put("worldName", worldName);
         data.put("active", active);
         data.put("createdTimestamp", createdTimestamp);
-        data.put("startLocation", startLocation);
-        data.put("checkpointLocation", checkpointLocation);
-        data.put("preparationLocation", preparationLocation);
-        data.put("enemySpawnPos1", enemySpawnPos1);
-        data.put("enemySpawnPos2", enemySpawnPos2);
+        data.put("startLocation", serializeLocation(startLocation));
+        data.put("checkpointLocation", serializeLocation(checkpointLocation));
+        data.put("preparationLocation", serializeLocation(preparationLocation));
+        data.put("enemySpawnPos1", serializeLocation(enemySpawnPos1));
+        data.put("enemySpawnPos2", serializeLocation(enemySpawnPos2));
         return data;
     }
 
@@ -144,31 +146,69 @@ public class SQLBattleWorld implements ConfigurationSerializable {
             world.createdTimestamp = System.currentTimeMillis();
         }
 
-        Object startObj = data.get("startLocation");
-        if (startObj instanceof Location) {
-            world.startLocation = (Location) startObj;
-        }
-
-        Object prepObj = data.get("preparationLocation");
-        if (prepObj instanceof Location) {
-            world.preparationLocation = (Location) prepObj;
-        }
-
-        Object checkpointObj = data.get("checkpointLocation");
-        if (checkpointObj instanceof Location) {
-            world.checkpointLocation = (Location) checkpointObj;
-        }
-
-        Object pos1Obj = data.get("enemySpawnPos1");
-        if (pos1Obj instanceof Location) {
-            world.enemySpawnPos1 = (Location) pos1Obj;
-        }
-
-        Object pos2Obj = data.get("enemySpawnPos2");
-        if (pos2Obj instanceof Location) {
-            world.enemySpawnPos2 = (Location) pos2Obj;
-        }
+        world.startLocation = deserializeLocation(data.get("startLocation"));
+        world.preparationLocation = deserializeLocation(data.get("preparationLocation"));
+        world.checkpointLocation = deserializeLocation(data.get("checkpointLocation"));
+        world.enemySpawnPos1 = deserializeLocation(data.get("enemySpawnPos1"));
+        world.enemySpawnPos2 = deserializeLocation(data.get("enemySpawnPos2"));
 
         return world;
+    }
+
+    private static Map<String, Object> serializeLocation(Location location) {
+        if (location == null || location.getWorld() == null) {
+            return null;
+        }
+
+        Map<String, Object> map = new HashMap<>();
+        map.put("world", location.getWorld().getName());
+        map.put("x", location.getX());
+        map.put("y", location.getY());
+        map.put("z", location.getZ());
+        map.put("yaw", location.getYaw());
+        map.put("pitch", location.getPitch());
+        return map;
+    }
+
+    private static Location deserializeLocation(Object obj) {
+        if (obj == null) {
+            return null;
+        }
+
+        if (obj instanceof Location) {
+            return ((Location) obj).clone();
+        }
+
+        if (!(obj instanceof Map<?, ?>)) {
+            return null;
+        }
+
+        Map<?, ?> map = (Map<?, ?>) obj;
+        String worldName = String.valueOf(map.get("world"));
+        World world = Bukkit.getWorld(worldName);
+        if (world == null) {
+            return null;
+        }
+
+        double x = asDouble(map.get("x"), 0.0D);
+        double y = asDouble(map.get("y"), 0.0D);
+        double z = asDouble(map.get("z"), 0.0D);
+        float yaw = (float) asDouble(map.get("yaw"), 0.0D);
+        float pitch = (float) asDouble(map.get("pitch"), 0.0D);
+        return new Location(world, x, y, z, yaw, pitch);
+    }
+
+    private static double asDouble(Object value, double defaultValue) {
+        if (value instanceof Number) {
+            return ((Number) value).doubleValue();
+        }
+        if (value == null) {
+            return defaultValue;
+        }
+        try {
+            return Double.parseDouble(String.valueOf(value));
+        } catch (NumberFormatException e) {
+            return defaultValue;
+        }
     }
 }

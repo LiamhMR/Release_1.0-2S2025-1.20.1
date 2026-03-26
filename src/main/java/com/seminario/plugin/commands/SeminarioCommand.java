@@ -935,6 +935,7 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage(ChatColor.WHITE + "/sm sqlbattle here set start" + ChatColor.GRAY + " - Guardar punto de inicio del combate");
         sender.sendMessage(ChatColor.WHITE + "/sm sqlbattle here set checkpoint" + ChatColor.GRAY + " - Guardar checkpoint de respawn");
         sender.sendMessage(ChatColor.WHITE + "/sm sqlbattle here set prewave" + ChatColor.GRAY + " - Guardar fase de preparación SQL");
+        sender.sendMessage(ChatColor.WHITE + "/sm sqlbattle here schema" + ChatColor.GRAY + " - Ver estructura provisional de tablas SQL Battle");
         sender.sendMessage(ChatColor.WHITE + "/sm sqlbattle here set enemyspawn" + ChatColor.GRAY + " - Guardar región de spawn enemigo con WorldEdit");
         sender.sendMessage(ChatColor.WHITE + "/sm sqlbattle start [mundo]" + ChatColor.GRAY + " - Iniciar prueba manual SQL Battle");
         sender.sendMessage(ChatColor.WHITE + "/sm sqlbattle stop [mundo]" + ChatColor.GRAY + " - Detener oleada y dejar mundo en PEACEFUL");
@@ -1084,7 +1085,7 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
             }
 
             if (args[0].equalsIgnoreCase("sqlbattle") && args[1].equalsIgnoreCase("here")) {
-                return Arrays.asList("set", "status")
+                return Arrays.asList("set", "status", "schema")
                     .stream()
                     .filter(s -> s.toLowerCase().startsWith(args[2].toLowerCase()))
                     .collect(Collectors.toList());
@@ -1512,9 +1513,10 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
+        sqlBattleManager.stopSessionsForWorld(worldName);
         sqlBattleManager.setWaveActive(worldName, false);
         sender.sendMessage(ChatColor.GREEN + "SQL Battle detenido en '" + worldName + "'.");
-        sender.sendMessage(ChatColor.GRAY + "Dificultad del mundo cambiada a PEACEFUL.");
+        sender.sendMessage(ChatColor.GRAY + "Sesiones prewave cerradas y mundo cambiado a PEACEFUL.");
         return true;
     }
 
@@ -1694,7 +1696,7 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
         }
 
         if (args.length < 3) {
-            player.sendMessage(ChatColor.RED + "Uso: /sm sqlbattle here <set|status>");
+            player.sendMessage(ChatColor.RED + "Uso: /sm sqlbattle here <set|status|schema>");
             return true;
         }
 
@@ -1704,8 +1706,11 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
                 return handleSQLBattleSetCommand(player, args);
             case "status":
                 return sendSQLBattleInfo(player, sqlBattleManager.getSQLBattle(worldName));
+            case "schema":
+                sqlBattleManager.showSchemaOverview(player);
+                return true;
             default:
-                player.sendMessage(ChatColor.RED + "Uso: /sm sqlbattle here <set|status>");
+                player.sendMessage(ChatColor.RED + "Uso: /sm sqlbattle here <set|status|schema>");
                 return true;
         }
     }
@@ -1801,8 +1806,8 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
                 return true;
             }
 
-            player.sendMessage(ChatColor.GREEN + "¡SQL Battle iniciado para prueba!");
-            player.sendMessage(ChatColor.GRAY + "Has sido movido al inicio y checkpoint aplicado.");
+            player.sendMessage(ChatColor.GREEN + "¡SQL Battle iniciado en fase prewave!");
+            player.sendMessage(ChatColor.GRAY + "Has sido movido a preparación. Escribe consultas en el chat dentro de la zona prewave.");
             return true;
         }
 
@@ -1830,7 +1835,7 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
         }
 
         sender.sendMessage(ChatColor.GREEN + "SQL Battle iniciado en '" + worldName + "'.");
-        sender.sendMessage(ChatColor.GRAY + "Jugadores iniciados: " + startedPlayers);
+        sender.sendMessage(ChatColor.GRAY + "Jugadores enviados a prewave: " + startedPlayers);
         return true;
     }
 

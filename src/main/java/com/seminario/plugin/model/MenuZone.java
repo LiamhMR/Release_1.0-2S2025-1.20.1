@@ -412,14 +412,14 @@ public class MenuZone implements ConfigurationSerializable {
         }
         
         Location pos1 = new Location(world, 
-            (Double) data.get("pos1.x"),
-            (Double) data.get("pos1.y"),
-            (Double) data.get("pos1.z"));
+            asDouble(data.get("pos1.x")),
+            asDouble(data.get("pos1.y")),
+            asDouble(data.get("pos1.z")));
             
         Location pos2 = new Location(world,
-            (Double) data.get("pos2.x"),
-            (Double) data.get("pos2.y"),
-            (Double) data.get("pos2.z"));
+            asDouble(data.get("pos2.x")),
+            asDouble(data.get("pos2.y")),
+            asDouble(data.get("pos2.z")));
         
         // Load menu type if present
         MenuType menuType = null;
@@ -436,9 +436,9 @@ public class MenuZone implements ConfigurationSerializable {
             World teleportWorld = org.bukkit.Bukkit.getWorld(teleportWorldName);
             if (teleportWorld != null) {
                 Location teleportLoc = new Location(teleportWorld,
-                    (Double) data.get("teleport.x"),
-                    (Double) data.get("teleport.y"),
-                    (Double) data.get("teleport.z"));
+                    asDouble(data.get("teleport.x")),
+                    asDouble(data.get("teleport.y")),
+                    asDouble(data.get("teleport.z")));
                 zone.setTeleportLocation(teleportLoc);
             }
         }
@@ -451,14 +451,14 @@ public class MenuZone implements ConfigurationSerializable {
         // Load slide fixed position if present
         if (data.containsKey("slideFixedLocation.x")) {
             Location fixedLoc = new Location(world,
-                (Double) data.get("slideFixedLocation.x"),
-                (Double) data.get("slideFixedLocation.y"),
-                (Double) data.get("slideFixedLocation.z"));
+                asDouble(data.get("slideFixedLocation.x")),
+                asDouble(data.get("slideFixedLocation.y")),
+                asDouble(data.get("slideFixedLocation.z")));
             if (data.containsKey("slideFixedLocation.yaw")) {
-                fixedLoc.setYaw(((Double) data.get("slideFixedLocation.yaw")).floatValue());
+                fixedLoc.setYaw(asFloat(data.get("slideFixedLocation.yaw")));
             }
             if (data.containsKey("slideFixedLocation.pitch")) {
-                fixedLoc.setPitch(((Double) data.get("slideFixedLocation.pitch")).floatValue());
+                fixedLoc.setPitch(asFloat(data.get("slideFixedLocation.pitch")));
             }
             zone.setSlideFixedLocation(fixedLoc);
         }
@@ -472,14 +472,14 @@ public class MenuZone implements ConfigurationSerializable {
         }
         if (data.containsKey("fixSlideRenderLocation.x")) {
             Location renderLoc = new Location(world,
-                (Double) data.get("fixSlideRenderLocation.x"),
-                (Double) data.get("fixSlideRenderLocation.y"),
-                (Double) data.get("fixSlideRenderLocation.z"));
+                asDouble(data.get("fixSlideRenderLocation.x")),
+                asDouble(data.get("fixSlideRenderLocation.y")),
+                asDouble(data.get("fixSlideRenderLocation.z")));
             if (data.containsKey("fixSlideRenderLocation.yaw")) {
-                renderLoc.setYaw(((Double) data.get("fixSlideRenderLocation.yaw")).floatValue());
+                renderLoc.setYaw(asFloat(data.get("fixSlideRenderLocation.yaw")));
             }
             if (data.containsKey("fixSlideRenderLocation.pitch")) {
-                renderLoc.setPitch(((Double) data.get("fixSlideRenderLocation.pitch")).floatValue());
+                renderLoc.setPitch(asFloat(data.get("fixSlideRenderLocation.pitch")));
             }
             zone.setFixSlideRenderLocation(renderLoc);
         }
@@ -488,16 +488,16 @@ public class MenuZone implements ConfigurationSerializable {
         }
         if (data.containsKey("nextButtonLocation.x")) {
             Location nextBtn = new Location(world,
-                (Double) data.get("nextButtonLocation.x"),
-                (Double) data.get("nextButtonLocation.y"),
-                (Double) data.get("nextButtonLocation.z"));
+                asDouble(data.get("nextButtonLocation.x")),
+                asDouble(data.get("nextButtonLocation.y")),
+                asDouble(data.get("nextButtonLocation.z")));
             zone.setNextButtonLocation(nextBtn);
         }
         if (data.containsKey("backButtonLocation.x")) {
             Location backBtn = new Location(world,
-                (Double) data.get("backButtonLocation.x"),
-                (Double) data.get("backButtonLocation.y"),
-                (Double) data.get("backButtonLocation.z"));
+                asDouble(data.get("backButtonLocation.x")),
+                asDouble(data.get("backButtonLocation.y")),
+                asDouble(data.get("backButtonLocation.z")));
             zone.setBackButtonLocation(backBtn);
         }
         
@@ -507,6 +507,20 @@ public class MenuZone implements ConfigurationSerializable {
         }
             
         return zone;
+    }
+
+    private static double asDouble(Object value) {
+        if (value instanceof Number) {
+            return ((Number) value).doubleValue();
+        }
+        return Double.parseDouble(String.valueOf(value));
+    }
+
+    private static float asFloat(Object value) {
+        if (value instanceof Number) {
+            return ((Number) value).floatValue();
+        }
+        return Float.parseFloat(String.valueOf(value));
     }
     
     @Override
