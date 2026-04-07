@@ -11,6 +11,7 @@ import com.seminario.plugin.listener.HarryNPCListener;
 import com.seminario.plugin.listener.LobbyPlayerListener;
 import com.seminario.plugin.listener.PlayerEventListener;
 import com.seminario.plugin.listener.SQLBattlePreparationListener;
+import com.seminario.plugin.listener.SQLBattleWaveListener;
 import com.seminario.plugin.listener.SQLEntryListener;
 import com.seminario.plugin.manager.FireworkManager;
 import com.seminario.plugin.manager.FixSlideManager;
@@ -112,6 +113,9 @@ public class App extends JavaPlugin {
 
         // Register SQL Battle preparation listener for chat-based query gameplay
         getServer().getPluginManager().registerEvents(new SQLBattlePreparationListener(sqlBattleManager, this), this);
+
+        // Register SQL Battle wave listener for stage progression and wave completion
+        getServer().getPluginManager().registerEvents(new SQLBattleWaveListener(sqlBattleManager), this);
         
         // Register SQL world listener for auto-start functionality
         getServer().getPluginManager().registerEvents(new com.seminario.plugin.listeners.SQLWorldListener(sqlDungeonManager), this);

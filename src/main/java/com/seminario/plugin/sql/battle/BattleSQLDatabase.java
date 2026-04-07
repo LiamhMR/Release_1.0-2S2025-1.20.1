@@ -6,6 +6,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.logging.Logger;
 
@@ -172,6 +173,57 @@ public class BattleSQLDatabase {
             ps.setInt(1, Math.max(0, Math.min(stage, 3)));
             ps.executeUpdate();
         }
+    }
+
+    public List<BattleEnemyRow> getEnemiesForStage(int stage) throws SQLException {
+        List<BattleEnemyRow> enemies = new ArrayList<>();
+        String sql = "SELECT id, tipo_id, hp, etapa_aparicion FROM enemigos WHERE estado = 'vivo' AND etapa_aparicion = ? ORDER BY id ASC";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setInt(1, stage);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    enemies.add(new BattleEnemyRow(
+                        rs.getInt("id"),
+                        rs.getInt("tipo_id"),
+                        rs.getInt("hp"),
+                        rs.getInt("etapa_aparicion")
+                    ));
+                }
+            }
+        }
+        return enemies;
+    }
+
+    public int getPreparedSummonQuantity(int itemId, int maxActiveStage) throws SQLException {
+        String sql = "SELECT COALESCE(SUM(i.cantidad), 0) AS total "
+            + "FROM inventario i INNER JOIN tipos_item t ON i.item_id = t.id "
+            + "WHERE i.item_id = ? AND t.categoria = 'invocacion' AND i.activo_en_etapa <= ?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setInt(1, itemId);
+            ps.setInt(2, maxActiveStage);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return Math.max(0, rs.getInt("total"));
+                }
+            }
+        }
+        return 0;
+    }
+
+    public int getPreparedSummonQuantityForStage(int itemId, int exactStage) throws SQLException {
+        String sql = "SELECT COALESCE(SUM(i.cantidad), 0) AS total "
+            + "FROM inventario i INNER JOIN tipos_item t ON i.item_id = t.id "
+            + "WHERE i.item_id = ? AND t.categoria = 'invocacion' AND i.activo_en_etapa = ?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setInt(1, itemId);
+            ps.setInt(2, exactStage);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return Math.max(0, rs.getInt("total"));
+                }
+            }
+        }
+        return 0;
     }
 
     // -------------------------------------------------------------------------
@@ -373,5 +425,79 @@ public class BattleSQLDatabase {
             }
         }
         return defaultValue;
+    }
+
+    public static class BattleEnemyRow {
+        private final int enemyId;
+        private final int tipoId;
+        private final int hp;
+        private final int stage;
+
+        public BattleEnemyRow(int enemyId, int tipoId, int hp, int stage) {
+            this.enemyId = enemyId;
+            this.tipoId = tipoId;
+            this.hp = hp;
+            this.stage = stage;
+        }
+
+        public int getEnemyId() {
+            return enemyId;
+        }
+
+        public int getTipoId() {
+            return tipoId;
+        }
+
+        public int getHp() {
+            return hp;
+        }
+
+        public int getStage() {
+            return stage;
+        }
+    }
+
+    public static class InventoryItemRow {
+        private final int itemId;
+        private final int cantidad;
+        private final String nombre;
+        private final String categoria;
+
+        public InventoryItemRow(int itemId, int cantidad, String nombre, String categoria) {
+            this.itemId = itemId;
+            this.cantidad = cantidad;
+            this.nombre = nombre;
+            this.categoria = categoria;
+        }
+
+        public int getItemId() { return itemId; }
+        public int getCantidad() { return cantidad; }
+        public String getNombre() { return nombre; }
+        public String getCategoria() { return categoria; }
+    }
+
+    /**
+     * Returns items in inventario that activate at exactly the given stage,
+     * excluding invocacion items (those are handled as spawned entities).
+     */
+    public List<InventoryItemRow> getInventoryItemsForExactStage(int stage) throws SQLException {
+        List<InventoryItemRow> items = new ArrayList<>();
+        String sql = "SELECT i.item_id, i.cantidad, t.nombre, t.categoria "
+            + "FROM inventario i INNER JOIN tipos_item t ON i.item_id = t.id "
+            + "WHERE i.activo_en_etapa = ? AND t.categoria != 'invocacion'";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setInt(1, stage);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    items.add(new InventoryItemRow(
+                        rs.getInt("item_id"),
+                        rs.getInt("cantidad"),
+                        rs.getString("nombre"),
+                        rs.getString("categoria")
+                    ));
+                }
+            }
+        }
+        return items;
     }
 }

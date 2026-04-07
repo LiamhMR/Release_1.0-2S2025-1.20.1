@@ -87,6 +87,7 @@ com\seminario\plugin\model\SQLDungeonWorld.class
 com\seminario\plugin\model\SQLDifficulty$1.class
 com\seminario\plugin\listener\SQLPlayerListener.class
 com\seminario\plugin\sql\context\engine\GenericSQLValidationEngine$ValidationResult.class
+com\seminario\plugin\manager\SQLBattleManager$1.class
 com\seminario\plugin\sql\battle\BattleQueryExecutor.class
 com\seminario\plugin\manager\SlideManager.class
 com\seminario\plugin\listener\PlayerEventListener.class

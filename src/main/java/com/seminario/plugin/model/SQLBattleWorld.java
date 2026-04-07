@@ -16,11 +16,17 @@ public class SQLBattleWorld implements ConfigurationSerializable {
     private String worldName;
     private boolean active;
     private long createdTimestamp;
+    private Location worldEntryLocation;
     private Location startLocation;
+    private Location waveStartLocation;
     private Location checkpointLocation;
     private Location preparationLocation;
+    private Location summonZonePos1;
+    private Location summonZonePos2;
     private Location enemySpawnPos1;
     private Location enemySpawnPos2;
+    private Location entryZonePos1;
+    private Location entryZonePos2;
 
     public SQLBattleWorld() {
         this.active = true;
@@ -57,12 +63,30 @@ public class SQLBattleWorld implements ConfigurationSerializable {
         this.createdTimestamp = createdTimestamp;
     }
 
+    public Location getWorldEntryLocation() {
+        return worldEntryLocation;
+    }
+
+    public void setWorldEntryLocation(Location worldEntryLocation) {
+        this.worldEntryLocation = worldEntryLocation;
+    }
+
     public Location getStartLocation() {
-        return startLocation;
+        return waveStartLocation != null ? waveStartLocation : startLocation;
     }
 
     public void setStartLocation(Location startLocation) {
         this.startLocation = startLocation;
+        this.waveStartLocation = startLocation;
+    }
+
+    public Location getWaveStartLocation() {
+        return waveStartLocation != null ? waveStartLocation : startLocation;
+    }
+
+    public void setWaveStartLocation(Location waveStartLocation) {
+        this.waveStartLocation = waveStartLocation;
+        this.startLocation = waveStartLocation;
     }
 
     public Location getPreparationLocation() {
@@ -79,6 +103,22 @@ public class SQLBattleWorld implements ConfigurationSerializable {
 
     public void setPreparationLocation(Location preparationLocation) {
         this.preparationLocation = preparationLocation;
+    }
+
+    public Location getSummonZonePos1() {
+        return summonZonePos1;
+    }
+
+    public void setSummonZonePos1(Location summonZonePos1) {
+        this.summonZonePos1 = summonZonePos1;
+    }
+
+    public Location getSummonZonePos2() {
+        return summonZonePos2;
+    }
+
+    public void setSummonZonePos2(Location summonZonePos2) {
+        this.summonZonePos2 = summonZonePos2;
     }
 
     public Location getEnemySpawnPos1() {
@@ -98,7 +138,17 @@ public class SQLBattleWorld implements ConfigurationSerializable {
     }
 
     public boolean hasStartLocation() {
-        return startLocation != null && startLocation.getWorld() != null;
+        Location location = getStartLocation();
+        return location != null && location.getWorld() != null;
+    }
+
+    public boolean hasWorldEntryLocation() {
+        return worldEntryLocation != null && worldEntryLocation.getWorld() != null;
+    }
+
+    public boolean hasWaveStartLocation() {
+        Location location = getWaveStartLocation();
+        return location != null && location.getWorld() != null;
     }
 
     public boolean hasPreparationLocation() {
@@ -109,13 +159,43 @@ public class SQLBattleWorld implements ConfigurationSerializable {
         return checkpointLocation != null && checkpointLocation.getWorld() != null;
     }
 
+    public boolean hasSummonZone() {
+        return summonZonePos1 != null && summonZonePos2 != null
+            && summonZonePos1.getWorld() != null && summonZonePos2.getWorld() != null;
+    }
+
     public boolean hasEnemySpawnZone() {
         return enemySpawnPos1 != null && enemySpawnPos2 != null
             && enemySpawnPos1.getWorld() != null && enemySpawnPos2.getWorld() != null;
     }
 
+    public Location getEntryZonePos1() {
+        return entryZonePos1;
+    }
+
+    public void setEntryZonePos1(Location entryZonePos1) {
+        this.entryZonePos1 = entryZonePos1;
+    }
+
+    public Location getEntryZonePos2() {
+        return entryZonePos2;
+    }
+
+    public void setEntryZonePos2(Location entryZonePos2) {
+        this.entryZonePos2 = entryZonePos2;
+    }
+
+    public boolean hasEntryZone() {
+        return entryZonePos1 != null && entryZonePos2 != null
+            && entryZonePos1.getWorld() != null && entryZonePos2.getWorld() != null;
+    }
+
     public boolean isConfigured() {
-        return hasStartLocation() && hasCheckpointLocation() && hasPreparationLocation() && hasEnemySpawnZone();
+        return hasWaveStartLocation() && hasCheckpointLocation() && hasPreparationLocation() && hasEnemySpawnZone();
+    }
+
+    public boolean isExpandedConfigured() {
+        return isConfigured() && (hasWorldEntryLocation() || hasEntryZone()) && hasSummonZone();
     }
 
     @Override
@@ -124,11 +204,17 @@ public class SQLBattleWorld implements ConfigurationSerializable {
         data.put("worldName", worldName);
         data.put("active", active);
         data.put("createdTimestamp", createdTimestamp);
-        data.put("startLocation", serializeLocation(startLocation));
+        data.put("worldEntryLocation", serializeLocation(worldEntryLocation));
+        data.put("startLocation", serializeLocation(getStartLocation()));
+        data.put("waveStartLocation", serializeLocation(getWaveStartLocation()));
         data.put("checkpointLocation", serializeLocation(checkpointLocation));
         data.put("preparationLocation", serializeLocation(preparationLocation));
+        data.put("summonZonePos1", serializeLocation(summonZonePos1));
+        data.put("summonZonePos2", serializeLocation(summonZonePos2));
         data.put("enemySpawnPos1", serializeLocation(enemySpawnPos1));
         data.put("enemySpawnPos2", serializeLocation(enemySpawnPos2));
+        data.put("entryZonePos1", serializeLocation(entryZonePos1));
+        data.put("entryZonePos2", serializeLocation(entryZonePos2));
         return data;
     }
 
@@ -146,11 +232,20 @@ public class SQLBattleWorld implements ConfigurationSerializable {
             world.createdTimestamp = System.currentTimeMillis();
         }
 
+        world.worldEntryLocation = deserializeLocation(data.get("worldEntryLocation"));
         world.startLocation = deserializeLocation(data.get("startLocation"));
+        world.waveStartLocation = deserializeLocation(data.get("waveStartLocation"));
+        if (world.waveStartLocation == null) {
+            world.waveStartLocation = world.startLocation;
+        }
         world.preparationLocation = deserializeLocation(data.get("preparationLocation"));
         world.checkpointLocation = deserializeLocation(data.get("checkpointLocation"));
+        world.summonZonePos1 = deserializeLocation(data.get("summonZonePos1"));
+        world.summonZonePos2 = deserializeLocation(data.get("summonZonePos2"));
         world.enemySpawnPos1 = deserializeLocation(data.get("enemySpawnPos1"));
         world.enemySpawnPos2 = deserializeLocation(data.get("enemySpawnPos2"));
+        world.entryZonePos1 = deserializeLocation(data.get("entryZonePos1"));
+        world.entryZonePos2 = deserializeLocation(data.get("entryZonePos2"));
 
         return world;
     }
