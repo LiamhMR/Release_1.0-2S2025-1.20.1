@@ -27,6 +27,8 @@ public class SQLBattleWorld implements ConfigurationSerializable {
     private Location enemySpawnPos2;
     private Location entryZonePos1;
     private Location entryZonePos2;
+    private Location castleZonePos1;
+    private Location castleZonePos2;
 
     public SQLBattleWorld() {
         this.active = true;
@@ -190,6 +192,27 @@ public class SQLBattleWorld implements ConfigurationSerializable {
             && entryZonePos1.getWorld() != null && entryZonePos2.getWorld() != null;
     }
 
+    public Location getCastleZonePos1() {
+        return castleZonePos1;
+    }
+
+    public void setCastleZonePos1(Location castleZonePos1) {
+        this.castleZonePos1 = castleZonePos1;
+    }
+
+    public Location getCastleZonePos2() {
+        return castleZonePos2;
+    }
+
+    public void setCastleZonePos2(Location castleZonePos2) {
+        this.castleZonePos2 = castleZonePos2;
+    }
+
+    public boolean hasCastleZone() {
+        return castleZonePos1 != null && castleZonePos2 != null
+            && castleZonePos1.getWorld() != null && castleZonePos2.getWorld() != null;
+    }
+
     public boolean isConfigured() {
         return hasWaveStartLocation() && hasCheckpointLocation() && hasPreparationLocation() && hasEnemySpawnZone();
     }
@@ -215,6 +238,8 @@ public class SQLBattleWorld implements ConfigurationSerializable {
         data.put("enemySpawnPos2", serializeLocation(enemySpawnPos2));
         data.put("entryZonePos1", serializeLocation(entryZonePos1));
         data.put("entryZonePos2", serializeLocation(entryZonePos2));
+        data.put("castleZonePos1", serializeLocation(castleZonePos1));
+        data.put("castleZonePos2", serializeLocation(castleZonePos2));
         return data;
     }
 
@@ -246,6 +271,8 @@ public class SQLBattleWorld implements ConfigurationSerializable {
         world.enemySpawnPos2 = deserializeLocation(data.get("enemySpawnPos2"));
         world.entryZonePos1 = deserializeLocation(data.get("entryZonePos1"));
         world.entryZonePos2 = deserializeLocation(data.get("entryZonePos2"));
+        world.castleZonePos1 = deserializeLocation(data.get("castleZonePos1"));
+        world.castleZonePos2 = deserializeLocation(data.get("castleZonePos2"));
 
         return world;
     }

@@ -1,7 +1,6 @@
 com\seminario\plugin\util\FloatingFrameRenderer$1.class
 com\seminario\plugin\model\HarryNPC.class
 com\seminario\plugin\sql\battle\wave\EnemySpawn.class
-com\seminario\plugin\gui\ChestportGUI.class
 com\seminario\plugin\model\SQLDifficulty.class
 com\seminario\plugin\util\ZoneDetector.class
 com\seminario\plugin\util\HarryNPCAdapter.class
@@ -10,7 +9,6 @@ com\seminario\plugin\sql\context\challenge\SQLChallengeRepository.class
 com\seminario\plugin\sql\battle\ActionPointCost.class
 com\seminario\plugin\sql\battle\BattleValidationResult.class
 com\seminario\plugin\model\SQLBattleWorld.class
-com\seminario\plugin\App.class
 com\seminario\plugin\manager\HarryNPCManager$1.class
 com\seminario\plugin\sql\context\DefaultSQLQueryPolicy.class
 com\seminario\plugin\sql\battle\BattleExecutionResult$Builder.class
@@ -22,20 +20,17 @@ com\seminario\plugin\util\SlideMapRenderer3x3.class
 com\seminario\plugin\model\SQLLevel.class
 com\seminario\plugin\util\SpawnpointEffects.class
 com\seminario\plugin\sql\battle\wave\BattleWaveBank.class
-com\seminario\plugin\listener\ChestportGUIListener.class
 com\seminario\plugin\util\SlideMapRenderer4x4.class
 com\seminario\plugin\util\SlideScreenRenderer$1.class
 com\seminario\plugin\util\SlideScreenRenderer.class
 com\seminario\plugin\model\MenuZone.class
 com\seminario\plugin\util\SQLResultBook.class
-com\seminario\plugin\manager\SQLBattleManager.class
 com\seminario\plugin\sql\battle\BattleSQLDatabase.class
 com\seminario\plugin\model\FireworkTrigger.class
 com\seminario\plugin\listener\PostTestListener.class
 com\seminario\plugin\model\Survey.class
 com\seminario\plugin\sql\battle\BattleSQLConnectionProvider.class
 com\seminario\plugin\sql\SQLChallengeBank$1.class
-com\seminario\plugin\commands\SeminarioCommand.class
 com\seminario\plugin\util\ImageDownloader.class
 com\seminario\plugin\listeners\SQLWorldListener$1.class
 com\seminario\plugin\listener\HarryNPCListener.class
@@ -53,14 +48,12 @@ com\seminario\plugin\manager\SpawnpointManager.class
 com\seminario\plugin\sql\battle\BattleExecutionResult.class
 com\seminario\plugin\util\SlideMapRenderer4x4$ImageMapRenderer.class
 com\seminario\plugin\listener\PlayerJoinListener.class
-com\seminario\plugin\listener\SQLBattlePreparationListener.class
 com\seminario\plugin\manager\SQLDungeonManager.class
 com\seminario\plugin\listeners\SQLWorldListener.class
 com\seminario\plugin\manager\LobbyManager.class
 com\seminario\plugin\sql\context\challenge\SQLChallengeDefinition.class
 com\seminario\plugin\sql\context\SQLContextRegistry.class
 com\seminario\plugin\manager\FixSlideManager.class
-com\seminario\plugin\listener\SQLEntryListener.class
 com\seminario\plugin\sql\SQLQueryResult.class
 com\seminario\plugin\manager\FireworkManager.class
 com\seminario\plugin\sql\SQLChallengeBank.class
@@ -76,7 +69,6 @@ com\seminario\plugin\listener\LaboratoryListener.class
 com\seminario\plugin\sql\context\SQLContext.class
 com\seminario\plugin\sql\context\challenge\InMemorySQLChallengeRepository.class
 com\seminario\plugin\database\SQLDatabase.class
-com\seminario\plugin\manager\SQLBattleManager$BattlePlayerSession.class
 com\seminario\plugin\sql\context\SQLSchemaProvider.class
 com\seminario\plugin\util\SlideMapRenderer.class
 com\seminario\plugin\util\SpawnpointEffects$1.class
@@ -96,6 +88,5 @@ com\seminario\plugin\listener\LobbyPlayerListener.class
 com\seminario\plugin\manager\SlideShowManager.class
 com\seminario\plugin\sql\context\StaticSQLSchemaProvider.class
 com\seminario\plugin\listener\SurveyListener.class
-com\seminario\plugin\listener\WorldChangeListener.class
 com\seminario\plugin\model\MenuType.class
 com\seminario\plugin\sql\battle\wave\AlmacenGrant.class

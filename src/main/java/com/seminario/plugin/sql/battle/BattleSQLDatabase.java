@@ -7,7 +7,9 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.logging.Logger;
 
 import com.seminario.plugin.sql.battle.wave.AlmacenGrant;
@@ -35,15 +37,17 @@ import com.seminario.plugin.sql.battle.wave.EnemySpawn;
  */
 public class BattleSQLDatabase {
 
-    private static final String DB_URL = "jdbc:h2:mem:sqlbattle;DB_CLOSE_DELAY=-1";
+    private static final String DB_URL_PREFIX = "jdbc:h2:mem:sqlbattle_arena_";
     private static final String DB_USER = "sa";
     private static final String DB_PASSWORD = "";
 
     private Connection connection;
     private final Logger logger;
+    private final String dbUrl;
 
-    public BattleSQLDatabase(Logger logger) {
+    public BattleSQLDatabase(Logger logger, String arenaKey) {
         this.logger = logger;
+        this.dbUrl = DB_URL_PREFIX + sanitizeArenaKey(arenaKey) + ";DB_CLOSE_DELAY=-1";
     }
 
     // -------------------------------------------------------------------------
@@ -57,11 +61,12 @@ public class BattleSQLDatabase {
     public boolean initialize() {
         try {
             Class.forName("org.h2.Driver");
-            connection = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD);
+            connection = DriverManager.getConnection(dbUrl, DB_USER, DB_PASSWORD);
             logger.info("[SQLBattle] Conectado a la base de datos H2 en memoria");
 
-            createSchema();
+            createSharedSchema();
             seedReferenceData();
+            createPrivateSchema();
             seedInitialGameState();
 
             logger.info("[SQLBattle] Base de datos inicializada correctamente");
@@ -83,7 +88,6 @@ public class BattleSQLDatabase {
     public void resetForNewGame() throws SQLException {
         try (Statement stmt = connection.createStatement()) {
             stmt.execute("DELETE FROM inventario");
-            stmt.execute("DELETE FROM enemigos");
             stmt.execute("DELETE FROM almacen");
             stmt.execute("DELETE FROM jugador");
         }
@@ -226,16 +230,60 @@ public class BattleSQLDatabase {
         return 0;
     }
 
+    /**
+     * Captures current quantities in inventario by item_id.
+     * Intended to be used before/after a modifying query in the same transaction.
+     */
+    public Map<Integer, Integer> snapshotInventarioQuantities() throws SQLException {
+        Map<Integer, Integer> snapshot = new HashMap<>();
+        String sql = "SELECT item_id, cantidad FROM inventario";
+        try (Statement stmt = connection.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+            while (rs.next()) {
+                snapshot.put(rs.getInt("item_id"), Math.max(0, rs.getInt("cantidad")));
+            }
+        }
+        return snapshot;
+    }
+
+    /**
+     * Applies deduction to almacen based on positive quantity deltas in inventario.
+     * If almacen does not have enough stock for any increased item, throws SQLException.
+     */
+    public void consumeAlmacenForInventarioIncrease(Map<Integer, Integer> beforeSnapshot) throws SQLException {
+        Map<Integer, Integer> afterSnapshot = snapshotInventarioQuantities();
+
+        String updateSql = "UPDATE almacen SET cantidad = cantidad - ? WHERE item_id = ? AND cantidad >= ?";
+        try (PreparedStatement ps = connection.prepareStatement(updateSql)) {
+            for (Map.Entry<Integer, Integer> after : afterSnapshot.entrySet()) {
+                int itemId = after.getKey();
+                int before = beforeSnapshot.getOrDefault(itemId, 0);
+                int delta = after.getValue() - before;
+                if (delta <= 0) {
+                    continue;
+                }
+
+                ps.setInt(1, delta);
+                ps.setInt(2, itemId);
+                ps.setInt(3, delta);
+                int rows = ps.executeUpdate();
+                if (rows == 0) {
+                    throw new SQLException("Stock insuficiente en almacen para item_id=" + itemId + " (faltan " + delta + ")");
+                }
+            }
+        }
+    }
+
     // -------------------------------------------------------------------------
     // Schema
     // -------------------------------------------------------------------------
 
-    private void createSchema() throws SQLException {
+    private void createSharedSchema() throws SQLException {
         try (Statement stmt = connection.createStatement()) {
 
             // Reference: item catalog (read-only for players)
             stmt.execute(
-                "CREATE TABLE tipos_item (" +
+                "CREATE TABLE IF NOT EXISTS tipos_item (" +
                 "  id               INT PRIMARY KEY," +
                 "  nombre           VARCHAR(50)  NOT NULL," +
                 "  categoria        VARCHAR(20)  NOT NULL" +
@@ -247,7 +295,7 @@ public class BattleSQLDatabase {
 
             // Reference: enemy type catalog (read-only for players)
             stmt.execute(
-                "CREATE TABLE tipos_enemigo (" +
+                "CREATE TABLE IF NOT EXISTS tipos_enemigo (" +
                 "  id          INT PRIMARY KEY," +
                 "  nombre      VARCHAR(50)  NOT NULL," +
                 "  debilidad   VARCHAR(30)," +
@@ -255,41 +303,9 @@ public class BattleSQLDatabase {
                 ")"
             );
 
-            // Game state: player (always 1 row, system-managed)
+            // Shared wave state: enemies in the current wave (arena-wide)
             stmt.execute(
-                "CREATE TABLE jugador (" +
-                "  id            INT PRIMARY KEY," +
-                "  nombre        VARCHAR(50) NOT NULL," +
-                "  hp            INT NOT NULL CHECK (hp >= 0)," +
-                "  mana          INT NOT NULL CHECK (mana >= 0)," +
-                "  puntos_accion INT NOT NULL CHECK (puntos_accion >= 0)," +
-                "  oleada_actual INT DEFAULT 1 CHECK (oleada_actual > 0)," +
-                "  etapa_actual  INT DEFAULT 0 CHECK (etapa_actual BETWEEN 0 AND 3)" +
-                ")"
-            );
-
-            // Game state: pre-wave resource stockpile
-            stmt.execute(
-                "CREATE TABLE almacen (" +
-                "  item_id  INT PRIMARY KEY," +
-                "  cantidad INT NOT NULL CHECK (cantidad >= 0)," +
-                "  FOREIGN KEY (item_id) REFERENCES tipos_item(id)" +
-                ")"
-            );
-
-            // Game state: items committed for the current wave
-            stmt.execute(
-                "CREATE TABLE inventario (" +
-                "  item_id         INT PRIMARY KEY," +
-                "  cantidad        INT NOT NULL CHECK (cantidad >= 0)," +
-                "  activo_en_etapa INT DEFAULT 1 CHECK (activo_en_etapa BETWEEN 1 AND 3)," +
-                "  FOREIGN KEY (item_id) REFERENCES tipos_item(id)" +
-                ")"
-            );
-
-            // Game state: enemies in the current wave
-            stmt.execute(
-                "CREATE TABLE enemigos (" +
+                "CREATE TABLE IF NOT EXISTS enemigos (" +
                 "  id              INT PRIMARY KEY," +
                 "  tipo_id         INT NOT NULL," +
                 "  hp              INT NOT NULL CHECK (hp > 0)," +
@@ -303,6 +319,38 @@ public class BattleSQLDatabase {
         }
     }
 
+    private void createPrivateSchema() throws SQLException {
+        try (Statement stmt = connection.createStatement()) {
+            // Per-player connection-local state
+            stmt.execute(
+                "CREATE LOCAL TEMPORARY TABLE IF NOT EXISTS jugador (" +
+                "  id            INT PRIMARY KEY," +
+                "  nombre        VARCHAR(50) NOT NULL," +
+                "  hp            INT NOT NULL CHECK (hp >= 0)," +
+                "  mana          INT NOT NULL CHECK (mana >= 0)," +
+                "  puntos_accion INT NOT NULL CHECK (puntos_accion >= 0)," +
+                "  oleada_actual INT DEFAULT 1 CHECK (oleada_actual > 0)," +
+                "  etapa_actual  INT DEFAULT 0 CHECK (etapa_actual BETWEEN 0 AND 3)" +
+                ")"
+            );
+
+            stmt.execute(
+                "CREATE LOCAL TEMPORARY TABLE IF NOT EXISTS almacen (" +
+                "  item_id  INT PRIMARY KEY," +
+                "  cantidad INT NOT NULL CHECK (cantidad >= 0)" +
+                ")"
+            );
+
+            stmt.execute(
+                "CREATE LOCAL TEMPORARY TABLE IF NOT EXISTS inventario (" +
+                "  item_id         INT PRIMARY KEY," +
+                "  cantidad        INT NOT NULL CHECK (cantidad >= 0)," +
+                "  activo_en_etapa INT DEFAULT 1 CHECK (activo_en_etapa BETWEEN 1 AND 3)" +
+                ")"
+            );
+        }
+    }
+
     // -------------------------------------------------------------------------
     // Reference data (static catalog, not reset between games)
     // -------------------------------------------------------------------------
@@ -310,33 +358,30 @@ public class BattleSQLDatabase {
     private void seedReferenceData() throws SQLException {
         try (Statement stmt = connection.createStatement()) {
 
-            // 10 item types across all categories and stages
-            stmt.execute(
-                "INSERT INTO tipos_item (id, nombre, categoria, costo_mana, etapa_activacion) VALUES" +
-                " (1,  'Espada de Diamante',  'arma',        0,  1)," +
-                " (2,  'Espada de Hierro',    'arma',        0,  1)," +
-                " (3,  'Hacha de Madera',     'arma',        0,  1)," +
-                " (4,  'Arco Elfico',         'arma',        0,  2)," +
-                " (5,  'Armadura de Hierro',  'armadura',    0,  1)," +
-                " (6,  'Armadura de Diamante','armadura',    0,  2)," +
-                " (7,  'Hechizo de Fuego',    'hechizo',    30,  2)," +
-                " (8,  'Hechizo de Hielo',    'hechizo',   25,  1)," +
-                " (9,  'Pocion de Vida',      'consumible',  0,  1)," +
-                " (10, 'Invocacion de Golem', 'invocacion', 40,  3)"
-            );
+            // 13 item types across all categories and stages
+            stmt.execute("MERGE INTO tipos_item (id, nombre, categoria, costo_mana, etapa_activacion) KEY(id) VALUES (1,  'Espada de Diamante',  'arma',        0,  1)");
+            stmt.execute("MERGE INTO tipos_item (id, nombre, categoria, costo_mana, etapa_activacion) KEY(id) VALUES (2,  'Espada de Hierro',    'arma',        0,  1)");
+            stmt.execute("MERGE INTO tipos_item (id, nombre, categoria, costo_mana, etapa_activacion) KEY(id) VALUES (3,  'Hacha de Madera',     'arma',        0,  1)");
+            stmt.execute("MERGE INTO tipos_item (id, nombre, categoria, costo_mana, etapa_activacion) KEY(id) VALUES (4,  'Arco Elfico',         'arma',        0,  2)");
+            stmt.execute("MERGE INTO tipos_item (id, nombre, categoria, costo_mana, etapa_activacion) KEY(id) VALUES (5,  'Armadura de Hierro',  'armadura',    0,  1)");
+            stmt.execute("MERGE INTO tipos_item (id, nombre, categoria, costo_mana, etapa_activacion) KEY(id) VALUES (6,  'Armadura de Diamante','armadura',    0,  2)");
+            stmt.execute("MERGE INTO tipos_item (id, nombre, categoria, costo_mana, etapa_activacion) KEY(id) VALUES (7,  'Hechizo de Fuego',    'hechizo',    30,  2)");
+            stmt.execute("MERGE INTO tipos_item (id, nombre, categoria, costo_mana, etapa_activacion) KEY(id) VALUES (8,  'Hechizo de Hielo',    'hechizo',    25,  1)");
+            stmt.execute("MERGE INTO tipos_item (id, nombre, categoria, costo_mana, etapa_activacion) KEY(id) VALUES (9,  'Pocion de Vida',      'consumible',  0,  1)");
+            stmt.execute("MERGE INTO tipos_item (id, nombre, categoria, costo_mana, etapa_activacion) KEY(id) VALUES (10, 'Invocacion de Golem', 'invocacion', 40,  3)");
+            stmt.execute("MERGE INTO tipos_item (id, nombre, categoria, costo_mana, etapa_activacion) KEY(id) VALUES (11, 'Flechas',             'consumible',  0,  1)");
+            stmt.execute("MERGE INTO tipos_item (id, nombre, categoria, costo_mana, etapa_activacion) KEY(id) VALUES (12, 'Escudo',              'armadura',    0,  1)");
+            stmt.execute("MERGE INTO tipos_item (id, nombre, categoria, costo_mana, etapa_activacion) KEY(id) VALUES (13, 'Filete Cocido',       'consumible',  0,  1)");
 
             // 8 enemy types with distinct weaknesses
-            stmt.execute(
-                "INSERT INTO tipos_enemigo (id, nombre, debilidad, descripcion) VALUES" +
-                " (1, 'Zombi',          'luz',       'Muerto viviente lento pero resistente')," +
-                " (2, 'Esqueleto',      'espada',    'Arquero preciso, fragil en cuerpo a cuerpo')," +
-                " (3, 'Arana',          'fuego',     'Trepa paredes, veneno en cada ataque')," +
-                " (4, 'Creeper',        'hielo',     'Explosivo, se congela con hielo')," +
-                " (5, 'Enderman',       'agua',      'Teletransporte, evasivo y veloz')," +
-                " (6, 'Golem de Hierro','hacha',     'Inmune a flechas, vulnerable al hacha de madera')," +
-                " (7, 'Bruja',          'fuego',     'Lanza pociones, debil al fuego directo')," +
-                " (8, 'Dragon',         'hielo',     'Jefe final. Solo aparece en oleadas avanzadas')"
-            );
+            stmt.execute("MERGE INTO tipos_enemigo (id, nombre, debilidad, descripcion) KEY(id) VALUES (1, 'Zombi',          'luz',       'Muerto viviente lento pero resistente')");
+            stmt.execute("MERGE INTO tipos_enemigo (id, nombre, debilidad, descripcion) KEY(id) VALUES (2, 'Esqueleto',      'espada',    'Arquero preciso, fragil en cuerpo a cuerpo')");
+            stmt.execute("MERGE INTO tipos_enemigo (id, nombre, debilidad, descripcion) KEY(id) VALUES (3, 'Arana',          'fuego',     'Trepa paredes, veneno en cada ataque')");
+            stmt.execute("MERGE INTO tipos_enemigo (id, nombre, debilidad, descripcion) KEY(id) VALUES (4, 'Creeper',        'hielo',     'Explosivo, se congela con hielo')");
+            stmt.execute("MERGE INTO tipos_enemigo (id, nombre, debilidad, descripcion) KEY(id) VALUES (5, 'Enderman',       'agua',      'Teletransporte, evasivo y veloz')");
+            stmt.execute("MERGE INTO tipos_enemigo (id, nombre, debilidad, descripcion) KEY(id) VALUES (6, 'Golem de Hierro','hacha',     'Inmune a flechas, vulnerable al hacha de madera')");
+            stmt.execute("MERGE INTO tipos_enemigo (id, nombre, debilidad, descripcion) KEY(id) VALUES (7, 'Bruja',          'fuego',     'Lanza pociones, debil al fuego directo')");
+            stmt.execute("MERGE INTO tipos_enemigo (id, nombre, debilidad, descripcion) KEY(id) VALUES (8, 'Dragon',         'hielo',     'Jefe final. Solo aparece en oleadas avanzadas')");
         }
     }
 
@@ -353,21 +398,31 @@ public class BattleSQLDatabase {
                 " VALUES (1, 'Aventurero', 100, 100, 5, 1, 0)"
             );
 
-            // Starting stockpile: 7 item types available to the player
+            // Starting stockpile: core combat items for early survival
             stmt.execute(
                 "INSERT INTO almacen (item_id, cantidad) VALUES" +
                 " (1, 1)," +   // Espada de Diamante x1
                 " (2, 2)," +   // Espada de Hierro   x2
                 " (3, 2)," +   // Hacha de Madera    x2
+                " (4, 1)," +   // Arco Elfico        x1
                 " (5, 2)," +   // Armadura de Hierro x2
                 " (8, 3)," +   // Hechizo de Hielo   x3
                 " (9, 5)," +   // Pocion de Vida     x5
+                " (11, 32)," + // Flechas            x32
+                " (12, 1)," +  // Escudo             x1
+                " (13, 8)," +  // Filete Cocido      x8
                 " (10, 1)"     // Invocacion de Golem x1
             );
 
-            // Enemies for wave 1 (loaded from the bank)
-            spawnEnemies(BattleWaveBank.getByWaveNumber(1).getEnemies());
         }
+    }
+
+    private static String sanitizeArenaKey(String raw) {
+        if (raw == null || raw.trim().isEmpty()) {
+            return "default";
+        }
+        String normalized = raw.toLowerCase().replaceAll("[^a-z0-9_]", "_");
+        return normalized.isEmpty() ? "default" : normalized;
     }
 
     // -------------------------------------------------------------------------

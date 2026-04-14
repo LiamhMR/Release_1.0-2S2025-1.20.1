@@ -939,6 +939,7 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage(ChatColor.WHITE + "/sm sqlbattle here set summonzone" + ChatColor.GRAY + " - Guardar región de invocación con WorldEdit");
         sender.sendMessage(ChatColor.WHITE + "/sm sqlbattle here schema" + ChatColor.GRAY + " - Ver estructura provisional de tablas SQL Battle");
         sender.sendMessage(ChatColor.WHITE + "/sm sqlbattle here set enemyspawn" + ChatColor.GRAY + " - Guardar región de spawn enemigo con WorldEdit");
+        sender.sendMessage(ChatColor.WHITE + "/sm sqlbattle here set castle" + ChatColor.GRAY + " - Guardar región de castillo con WorldEdit");
         sender.sendMessage(ChatColor.WHITE + "/sm sqlbattle start [mundo]" + ChatColor.GRAY + " - Iniciar prueba manual SQL Battle");
         sender.sendMessage(ChatColor.WHITE + "/sm sqlbattle stop [mundo]" + ChatColor.GRAY + " - Detener oleada y dejar mundo en PEACEFUL");
         sender.sendMessage(ChatColor.WHITE + "/sm sqlbattle difficulty <dif> [mundo]" + ChatColor.GRAY + " - Cambiar dificultad (peaceful/easy/normal/hard)");
@@ -1019,7 +1020,7 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
             }
 
             if (args[0].equalsIgnoreCase("sqlbattle")) {
-                return Arrays.asList("here", "start", "stop", "difficulty", "reset", "forcestage", "respawncheckpoint", "debug", "list", "info", "remove")
+                return Arrays.asList("here", "start", "stop", "difficulty", "reset", "forcestage", "respawncheckpoint", "suggest", "debug", "list", "info", "remove")
                     .stream()
                     .filter(s -> s.toLowerCase().startsWith(args[1].toLowerCase()))
                     .collect(Collectors.toList());
@@ -1136,6 +1137,13 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
                     .filter(s -> s.toLowerCase().startsWith(args[2].toLowerCase()))
                     .collect(Collectors.toList());
             }
+
+            if (args[0].equalsIgnoreCase("sqlbattle") && args[1].equalsIgnoreCase("suggest")) {
+                return Arrays.asList("1", "2", "3", "4")
+                    .stream()
+                    .filter(s -> s.startsWith(args[2]))
+                    .collect(Collectors.toList());
+            }
             
             if (args[0].equalsIgnoreCase("fixslide")) {
                 // Don't suggest subcommands if "list" was typed
@@ -1163,7 +1171,7 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
             }
 
             if (args[0].equalsIgnoreCase("sqlbattle") && args[1].equalsIgnoreCase("here") && args[2].equalsIgnoreCase("set")) {
-                return Arrays.asList("entry", "wavestart", "start", "checkpoint", "prewave", "summonzone", "enemyspawn")
+                return Arrays.asList("entry", "wavestart", "start", "checkpoint", "prewave", "summonzone", "enemyspawn", "castle")
                     .stream()
                     .filter(s -> s.toLowerCase().startsWith(args[3].toLowerCase()))
                     .collect(Collectors.toList());
@@ -1482,7 +1490,7 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
      */
     private boolean handleSQLBattleCommand(CommandSender sender, String[] args) {
         if (args.length < 2) {
-            sender.sendMessage(ChatColor.RED + "Uso: /sm sqlbattle <here|start|stop|difficulty|reset|forcestage|respawncheckpoint|list|info|remove>");
+            sender.sendMessage(ChatColor.RED + "Uso: /sm sqlbattle <here|start|stop|difficulty|reset|forcestage|respawncheckpoint|suggest|list|info|remove>");
             return true;
         }
 
@@ -1506,6 +1514,8 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
                 return handleSQLBattleForceStageCommand(sender, args);
             case "respawncheckpoint":
                 return handleSQLBattleRespawnCheckpointCommand(sender, args);
+            case "suggest":
+                return handleSQLBattleSuggestCommand(sender, args);
             case "debug":
                 return handleSQLBattleDebugCommand(sender, args);
             case "list":
@@ -1515,9 +1525,32 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
             case "remove":
                 return handleSQLBattleRemoveCommand(sender, args);
             default:
-                sender.sendMessage(ChatColor.RED + "Uso: /sm sqlbattle <here|start|stop|difficulty|reset|forcestage|respawncheckpoint|debug|list|info|remove>");
+                sender.sendMessage(ChatColor.RED + "Uso: /sm sqlbattle <here|start|stop|difficulty|reset|forcestage|respawncheckpoint|suggest|debug|list|info|remove>");
                 return true;
         }
+    }
+
+    private boolean handleSQLBattleSuggestCommand(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(ChatColor.RED + "Este comando solo puede ser usado por jugadores.");
+            return true;
+        }
+
+        if (args.length < 3) {
+            player.sendMessage(ChatColor.RED + "Uso: /sm sqlbattle suggest <1|2|3|4>");
+            return true;
+        }
+
+        int suggestionId;
+        try {
+            suggestionId = Integer.parseInt(args[2]);
+        } catch (NumberFormatException e) {
+            player.sendMessage(ChatColor.RED + "El ID de sugerencia debe ser numérico (1-4).");
+            return true;
+        }
+
+        sqlBattleManager.executePreparationSuggestion(player, suggestionId);
+        return true;
     }
 
     private boolean handleSQLBattleDebugCommand(CommandSender sender, String[] args) {
@@ -1767,7 +1800,7 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
 
     private boolean handleSQLBattleSetCommand(Player player, String[] args) {
         if (args.length < 4) {
-            player.sendMessage(ChatColor.RED + "Uso: /sm sqlbattle here set <entry|wavestart|start|checkpoint|prewave|summonzone|enemyspawn>");
+            player.sendMessage(ChatColor.RED + "Uso: /sm sqlbattle here set <entry|wavestart|start|checkpoint|prewave|summonzone|enemyspawn|castle>");
             return true;
         }
 
@@ -1882,8 +1915,34 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
                 }
                 return true;
 
+            case "castle":
+                try {
+                    Location[] regionBounds = getSelectedRegionBounds(player);
+                    if (regionBounds == null) {
+                        player.sendMessage(ChatColor.RED + "No tienes una selección de WorldEdit activa. Usa //wand para seleccionar la zona.");
+                        return true;
+                    }
+
+                    Location pos1 = regionBounds[0];
+                    Location pos2 = regionBounds[1];
+
+                    if (sqlBattleManager.setCastleZone(worldName, pos1, pos2)) {
+                        player.sendMessage(ChatColor.GREEN + "¡Castle zone configurada!");
+                        player.sendMessage(ChatColor.GRAY + "Desde: " + formatLocation(pos1));
+                        player.sendMessage(ChatColor.GRAY + "Hasta: " + formatLocation(pos2));
+                        player.sendMessage(ChatColor.GRAY + "Los enemigos intentarán dominar esta zona.");
+                    } else {
+                        player.sendMessage(ChatColor.RED + "No se pudo guardar la castle zone.");
+                    }
+                } catch (IncompleteRegionException e) {
+                    player.sendMessage(ChatColor.RED + "Selección incompleta. Selecciona ambas posiciones con //wand.");
+                } catch (Exception e) {
+                    player.sendMessage(ChatColor.RED + "Error al obtener la selección: " + e.getMessage());
+                }
+                return true;
+
             default:
-                player.sendMessage(ChatColor.RED + "Uso: /sm sqlbattle here set <entry|wavestart|start|checkpoint|prewave|summonzone|enemyspawn>");
+                player.sendMessage(ChatColor.RED + "Uso: /sm sqlbattle here set <entry|wavestart|start|checkpoint|prewave|summonzone|enemyspawn|castle>");
                 return true;
         }
     }
@@ -1910,8 +1969,8 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
                 return true;
             }
 
-            player.sendMessage(ChatColor.GREEN + "¡SQL Battle iniciado en fase prewave!");
-            player.sendMessage(ChatColor.GRAY + "Has sido movido a preparación. Escribe consultas en el chat dentro de la zona prewave.");
+            player.sendMessage(ChatColor.GREEN + "Registro SQL Battle completado.");
+            player.sendMessage(ChatColor.GRAY + "Si eres participante, espera el countdown para entrar a prewave.");
             return true;
         }
 
@@ -1945,7 +2004,7 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
         }
 
         sender.sendMessage(ChatColor.GREEN + "SQL Battle iniciado en '" + worldName + "'.");
-        sender.sendMessage(ChatColor.GRAY + "Jugadores enviados a prewave: " + startedPlayers);
+        sender.sendMessage(ChatColor.GRAY + "Jugadores registrados en la arena: " + startedPlayers);
         return true;
     }
 
@@ -2026,6 +2085,7 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage(ChatColor.WHITE + "Preparación: " + formatOptionalLocation(battleWorld.getPreparationLocation()));
         sender.sendMessage(ChatColor.WHITE + "Zona invocación: " + formatOptionalRegion(battleWorld.getSummonZonePos1(), battleWorld.getSummonZonePos2()));
         sender.sendMessage(ChatColor.WHITE + "Spawn enemigo: " + formatOptionalRegion(battleWorld.getEnemySpawnPos1(), battleWorld.getEnemySpawnPos2()));
+        sender.sendMessage(ChatColor.WHITE + "Castle zone: " + formatOptionalRegion(battleWorld.getCastleZonePos1(), battleWorld.getCastleZonePos2()));
         return true;
     }
     
