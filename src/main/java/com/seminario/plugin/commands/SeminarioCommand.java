@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 import org.bukkit.Bukkit;
@@ -22,6 +23,7 @@ import org.bukkit.entity.Player;
 import com.seminario.plugin.config.ConfigManager;
 import com.seminario.plugin.manager.HarryNPCManager;
 import com.seminario.plugin.manager.LobbyManager;
+import com.seminario.plugin.manager.QuestManager;
 import com.seminario.plugin.manager.SQLBattleManager;
 import com.seminario.plugin.manager.SQLDungeonManager;
 import com.seminario.plugin.manager.SlideManager;
@@ -52,11 +54,12 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
     private final SpawnpointManager spawnpointManager;
     private final LobbyManager lobbyManager;
     private final SurveyManager surveyManager;
+    private final QuestManager questManager;
     private final com.seminario.plugin.manager.FireworkManager fireworkManager;
     private final HarryNPCManager harryNPCManager;
     private com.seminario.plugin.manager.FixSlideManager fixSlideManager;
     
-    public SeminarioCommand(ConfigManager configManager, SlideManager slideManager, SQLDungeonManager sqlDungeonManager, SQLBattleManager sqlBattleManager, SpawnpointManager spawnpointManager, LobbyManager lobbyManager, SurveyManager surveyManager, com.seminario.plugin.manager.FireworkManager fireworkManager, HarryNPCManager harryNPCManager) {
+    public SeminarioCommand(ConfigManager configManager, SlideManager slideManager, SQLDungeonManager sqlDungeonManager, SQLBattleManager sqlBattleManager, SpawnpointManager spawnpointManager, LobbyManager lobbyManager, SurveyManager surveyManager, QuestManager questManager, com.seminario.plugin.manager.FireworkManager fireworkManager, HarryNPCManager harryNPCManager) {
         this.configManager = configManager;
         this.slideManager = slideManager;
         this.sqlDungeonManager = sqlDungeonManager;
@@ -64,6 +67,7 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
         this.spawnpointManager = spawnpointManager;
         this.lobbyManager = lobbyManager;
         this.surveyManager = surveyManager;
+        this.questManager = questManager;
         this.fireworkManager = fireworkManager;
         this.harryNPCManager = harryNPCManager;
     }
@@ -139,6 +143,8 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
                 return handleTestCommand(sender, args);
             case "debug":
                 return handleDebugCommand(sender, args);
+            case "start":
+                return handleStartCommand(sender, args);
             default:
                 sendHelpMessage(sender);
                 return true;
@@ -146,18 +152,14 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
     }
     
     private boolean handleCreateCommand(CommandSender sender, String[] args) {
-        if (!(sender instanceof Player)) {
-            sender.sendMessage(ChatColor.RED + "Este comando solo puede ser usado por jugadores.");
-            return true;
-        }
-        
         if (args.length < 2) {
-            sender.sendMessage(ChatColor.RED + "Uso: /sm create <menuzone|fixslide|SQLDUNGEON|SQLBATTLE> <nombre> [args]");
+            sender.sendMessage(ChatColor.RED + "Uso: /sm create <menuzone|fixslide|SQLDUNGEON|SQLBATTLE|quest> <nombre> [args]");
             sender.sendMessage(ChatColor.YELLOW + "Ejemplos:");
             sender.sendMessage(ChatColor.GRAY + "  /sm create menuzone mi_zona");
             sender.sendMessage(ChatColor.GRAY + "  /sm create fixslide mi_fixslide mi_zona_slide");
             sender.sendMessage(ChatColor.GRAY + "  /sm create SQLDUNGEON nombre_mundo");
             sender.sendMessage(ChatColor.GRAY + "  /sm create SQLBATTLE [nombre_mundo]");
+            sender.sendMessage(ChatColor.GRAY + "  /sm create quest cuestionario_sql");
             return true;
         }
         
@@ -166,7 +168,13 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
             return handleCreateSQLDungeon(sender, args);
         } else if (createType.equals("sqlbattle")) {
             return handleCreateSQLBattle(sender, args);
+        } else if (createType.equals("quest")) {
+            return handleCreateQuestCommand(sender, args);
         } else if (createType.equals("fixslide")) {
+            if (!(sender instanceof Player)) {
+                sender.sendMessage(ChatColor.RED + "Este comando solo puede ser usado por jugadores.");
+                return true;
+            }
             if (args.length < 4) {
                 sender.sendMessage(ChatColor.RED + "Uso: /sm create fixslide <nombre_fixslide> <nombre_zona_slide>");
                 return true;
@@ -174,7 +182,12 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
             return handleCreateFixSlide(sender, args);
         } else if (!createType.equals("menuzone")) {
             sender.sendMessage(ChatColor.RED + "Tipo desconocido: " + createType);
-            sender.sendMessage(ChatColor.GRAY + "Tipos válidos: menuzone, fixslide, SQLDUNGEON, SQLBATTLE");
+            sender.sendMessage(ChatColor.GRAY + "Tipos válidos: menuzone, fixslide, SQLDUNGEON, SQLBATTLE, quest");
+            return true;
+        }
+
+        if (!(sender instanceof Player)) {
+            sender.sendMessage(ChatColor.RED + "Este comando solo puede ser usado por jugadores.");
             return true;
         }
 
@@ -230,6 +243,46 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage(ChatColor.RED + "Error al obtener la selección de WorldEdit: " + e.getMessage());
         }
         
+        return true;
+    }
+
+    private boolean handleCreateQuestCommand(CommandSender sender, String[] args) {
+        if (args.length < 3) {
+            sender.sendMessage(ChatColor.RED + "Uso: /sm create quest <nombre>");
+            return true;
+        }
+
+        String questName = args[2];
+        if (questManager.questExists(questName)) {
+            sender.sendMessage(ChatColor.RED + "Ya existe un quest con el nombre '" + questName + "'.");
+            return true;
+        }
+
+        if (!questManager.createQuest(questName)) {
+            sender.sendMessage(ChatColor.RED + "No se pudo crear el quest '" + questName + "'.");
+            return true;
+        }
+
+        sender.sendMessage(ChatColor.GREEN + "Quest '" + questName + "' creado exitosamente.");
+        sender.sendMessage(ChatColor.GRAY + "Archivo generado: quest/" + questName.toLowerCase() + ".yml");
+        sender.sendMessage(ChatColor.GRAY + "Usa /sm start quest " + questName + " para iniciarlo.");
+        return true;
+    }
+
+    private boolean handleStartCommand(CommandSender sender, String[] args) {
+        // /sm start quest <nombre>
+        if (args.length < 3 || !args[1].equalsIgnoreCase("quest")) {
+            sender.sendMessage(ChatColor.RED + "Uso: /sm start quest <nombre_del_quest>");
+            return true;
+        }
+
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(ChatColor.RED + "Este comando solo puede ser usado por jugadores.");
+            return true;
+        }
+
+        String questName = args[2];
+        questManager.startQuest(player, questName);
         return true;
     }
     
@@ -293,7 +346,27 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
     }
     
     private boolean handleSetCommand(CommandSender sender, String[] args) {
-        if (args.length < 4 || !args[1].equalsIgnoreCase("menutype")) {
+        if (args.length < 2) {
+            sender.sendMessage(ChatColor.RED + "Uso: /sm set <menutype|requirement> [args...]");
+            return true;
+        }
+
+        String setAction = args[1].toLowerCase();
+        
+        switch (setAction) {
+            case "menutype":
+                return handleSetMenuType(sender, args);
+            case "requirement":
+                return handleSetRequirement(sender, args);
+            default:
+                sender.sendMessage(ChatColor.RED + "Acción desconocida: " + setAction);
+                sender.sendMessage(ChatColor.GRAY + "Opciones: menutype, requirement");
+                return true;
+        }
+    }
+
+    private boolean handleSetMenuType(CommandSender sender, String[] args) {
+        if (args.length < 4) {
             sender.sendMessage(ChatColor.RED + "Uso: /sm set menutype <zona> <tipo>");
             sender.sendMessage(ChatColor.GRAY + "Tipos disponibles: " + String.join(", ", MenuType.getAvailableTypes()));
             return true;
@@ -323,6 +396,86 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage(ChatColor.RED + "Error al actualizar el tipo de menú.");
         }
         
+        return true;
+    }
+
+    private boolean handleSetRequirement(CommandSender sender, String[] args) {
+        if (args.length < 4) {
+            sender.sendMessage(ChatColor.RED + "Uso 1: /sm set requirement <quest_1> <quest_2>");
+            sender.sendMessage(ChatColor.RED + "Uso 2: /sm set requirement <menuzone> <quest> <texto_si_no>");
+            sender.sendMessage(ChatColor.YELLOW + "Ejemplo quest: /sm set requirement posttest pretest");
+            sender.sendMessage(ChatColor.YELLOW + "Ejemplo zona: /sm set requirement zona1 pretest Debes completar el pretest");
+            return true;
+        }
+
+        // Quest-to-quest requirement mode:
+        // /sm set requirement <quest_1> <quest_2>
+        if (args.length == 4) {
+            String questName = args[2];
+            String requiredQuestName = args[3];
+
+            if (!questManager.questExists(questName)) {
+                sender.sendMessage(ChatColor.RED + "El quest '" + questName + "' no existe.");
+                sender.sendMessage(ChatColor.GRAY + "Quests disponibles: " + String.join(", ", questManager.getQuestNames()));
+                return true;
+            }
+
+            if (!questManager.questExists(requiredQuestName)) {
+                sender.sendMessage(ChatColor.RED + "El quest requisito '" + requiredQuestName + "' no existe.");
+                sender.sendMessage(ChatColor.GRAY + "Quests disponibles: " + String.join(", ", questManager.getQuestNames()));
+                return true;
+            }
+
+            if (!questManager.setQuestRequirement(questName, requiredQuestName)) {
+                sender.sendMessage(ChatColor.RED + "No se pudo guardar el requisito. Verifica que no sea el mismo quest.");
+                return true;
+            }
+
+            sender.sendMessage(ChatColor.GREEN + "Requisito de quest configurado correctamente.");
+            sender.sendMessage(ChatColor.GRAY + "Para responder '" + questName + "' primero se debe completar: " + requiredQuestName);
+            return true;
+        }
+
+        String zoneName = args[2];
+        String questName = args[3];
+        String failureText = String.join(" ", Arrays.copyOfRange(args, 4, args.length));
+
+        // Check if zone exists
+        if (!configManager.hasMenuZone(zoneName)) {
+            sender.sendMessage(ChatColor.RED + "No se encontró una zona con el nombre '" + zoneName + "'.");
+            return true;
+        }
+
+        MenuZone zone = configManager.getMenuZone(zoneName);
+        if (zone == null) {
+            sender.sendMessage(ChatColor.RED + "Error al acceder a la zona '" + zoneName + "'.");
+            return true;
+        }
+
+        // Check if zone is CHESTPORT type
+        if (!zone.hasMenuType() || zone.getMenuType() != MenuType.CHESTPORT) {
+            sender.sendMessage(ChatColor.RED + "La zona '" + zoneName + "' debe ser de tipo 'CHESTPORT' para añadir requisitos.");
+            sender.sendMessage(ChatColor.GRAY + "Usa: /sm set menutype " + zoneName + " CHESTPORT");
+            return true;
+        }
+
+        // Verify quest exists
+        if (!questManager.questExists(questName)) {
+            sender.sendMessage(ChatColor.RED + "El quest '" + questName + "' no existe.");
+            sender.sendMessage(ChatColor.GRAY + "Quests disponibles: " + String.join(", ", questManager.getQuestNames()));
+            return true;
+        }
+
+        // Set requirement
+        zone.setQuestRequirement(questName);
+        zone.setQuestFailureText(failureText);
+
+        // Save to config
+        configManager.saveConfig();
+        
+        sender.sendMessage(ChatColor.GREEN + "Requisito de quest agregado a '" + zoneName + "'.");
+        sender.sendMessage(ChatColor.GRAY + "Quest requerido: " + questName);
+        sender.sendMessage(ChatColor.GRAY + "Mensaje de fallo: " + failureText);
         return true;
     }
     
@@ -931,6 +1084,7 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage(ChatColor.GREEN + "=== Comandos de Seminario ===");
         sender.sendMessage(ChatColor.WHITE + "/sm create menuzone <nombre>" + ChatColor.GRAY + " - Crear zona de menú");
         sender.sendMessage(ChatColor.WHITE + "/sm create SQLBATTLE [mundo]" + ChatColor.GRAY + " - Registrar mundo SQL Battle");
+        sender.sendMessage(ChatColor.WHITE + "/sm create quest <nombre>" + ChatColor.GRAY + " - Crear cuestionario YAML con pregunta placeholder");
         sender.sendMessage(ChatColor.WHITE + "/sm set menutype <zona> <tipo>" + ChatColor.GRAY + " - Establecer tipo de menú");
         sender.sendMessage(ChatColor.WHITE + "/sm sqlbattle here set entry" + ChatColor.GRAY + " - Guardar punto de entrada al mundo SQL Battle");
         sender.sendMessage(ChatColor.WHITE + "/sm sqlbattle here set wavestart" + ChatColor.GRAY + " - Guardar punto de inicio cuando comience una oleada");
@@ -946,8 +1100,15 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage(ChatColor.WHITE + "/sm sqlbattle reset [mundo]" + ChatColor.GRAY + " - Resetear estado de jugadores para debug");
         sender.sendMessage(ChatColor.WHITE + "/sm sqlbattle forcestage <1|2|3> [jugador]" + ChatColor.GRAY + " - Forzar etapa de oleada");
         sender.sendMessage(ChatColor.WHITE + "/sm sqlbattle respawncheckpoint [jugador]" + ChatColor.GRAY + " - Enviar al checkpoint");
+        sender.sendMessage(ChatColor.WHITE + "/sm sqlbattle stopgamemode" + ChatColor.GRAY + " - Pausar forzado de modo aventura en SQL Battle");
+        sender.sendMessage(ChatColor.WHITE + "/sm sqlbattle continuegamemode" + ChatColor.GRAY + " - Reanudar forzado de modo aventura en SQL Battle");
+        sender.sendMessage(ChatColor.WHITE + "/sm sqlbattle get <item> [jugador]" + ChatColor.GRAY + " - Dar 1 item SQL Battle para pruebas");
         sender.sendMessage(ChatColor.WHITE + "/sm sqlbattle debug [mundo]" + ChatColor.GRAY + " - Diagnóstico completo y visualización de zonas con partículas");
         sender.sendMessage(ChatColor.WHITE + "/sm sqlbattle info [mundo]" + ChatColor.GRAY + " - Ver estado de configuración SQL Battle");
+        sender.sendMessage(ChatColor.WHITE + "/sm sqlbattle ranking [top]" + ChatColor.GRAY + " - Ver ranking global de puntos SQL Battle");
+        sender.sendMessage(ChatColor.WHITE + "/sm start quest <nombre>" + ChatColor.GRAY + " - Iniciar un cuestionario por inventario");
+        sender.sendMessage(ChatColor.WHITE + "/sm set requirement <quest_1> <quest_2>" + ChatColor.GRAY + " - Requerir quest_2 antes de responder quest_1");
+        sender.sendMessage(ChatColor.WHITE + "/sm set requirement <menuzone> <quest> <texto>" + ChatColor.GRAY + " - Requisito de quest para CHESTPORT");
         sender.sendMessage(ChatColor.WHITE + "/sm slide <zona> add <url>" + ChatColor.GRAY + " - Agregar slide");
         sender.sendMessage(ChatColor.WHITE + "/sm slide <zona> edit <nro> <url>" + ChatColor.GRAY + " - Editar slide");
         sender.sendMessage(ChatColor.WHITE + "/sm slide <zona> delete <nro>" + ChatColor.GRAY + " - Eliminar slide");
@@ -1005,7 +1166,7 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
         }
         
         if (args.length == 1) {
-            return Arrays.asList("create", "remove", "list", "info", "set", "slide", "fixslide", "disabled", "enabled", "reload", "sql", "sqlbattle", "spawnpoint", "lobby", "survey", "defaultsurvey", "createfire", "createcreeperfire", "firework", "newharry", "harry")
+            return Arrays.asList("create", "remove", "list", "info", "set", "slide", "fixslide", "disabled", "enabled", "reload", "sql", "sqlbattle", "spawnpoint", "lobby", "survey", "defaultsurvey", "createfire", "createcreeperfire", "firework", "newharry", "harry", "start", "test", "debug", "chestport", "db")
                 .stream()
                 .filter(s -> s.toLowerCase().startsWith(args[0].toLowerCase()))
                 .collect(Collectors.toList());
@@ -1013,21 +1174,24 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
         
         if (args.length == 2) {
             if (args[0].equalsIgnoreCase("create")) {
-                return Arrays.asList("menuzone", "fixslide", "SQLDUNGEON", "SQLBATTLE")
+                return Arrays.asList("menuzone", "fixslide", "SQLDUNGEON", "SQLBATTLE", "quest")
                     .stream()
                     .filter(s -> s.toLowerCase().startsWith(args[1].toLowerCase()))
                     .collect(Collectors.toList());
             }
 
             if (args[0].equalsIgnoreCase("sqlbattle")) {
-                return Arrays.asList("here", "start", "stop", "difficulty", "reset", "forcestage", "respawncheckpoint", "suggest", "debug", "list", "info", "remove")
+                return Arrays.asList("here", "start", "stop", "difficulty", "reset", "forcestage", "respawncheckpoint", "stopgamemode", "continuegamemode", "get", "suggest", "debug", "list", "info", "ranking", "remove")
                     .stream()
                     .filter(s -> s.toLowerCase().startsWith(args[1].toLowerCase()))
                     .collect(Collectors.toList());
             }
             
             if (args[0].equalsIgnoreCase("set")) {
-                return Arrays.asList("menutype");
+                return Arrays.asList("menutype", "requirement")
+                    .stream()
+                    .filter(s -> s.toLowerCase().startsWith(args[1].toLowerCase()))
+                    .collect(Collectors.toList());
             }
             
             if (args[0].equalsIgnoreCase("spawnpoint")) {
@@ -1104,6 +1268,13 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
                     .collect(Collectors.toList());
             }
 
+            if (args[0].equalsIgnoreCase("create") && args[1].equalsIgnoreCase("quest")) {
+                return Arrays.asList("mi_quest")
+                    .stream()
+                    .filter(s -> s.toLowerCase().startsWith(args[2].toLowerCase()))
+                    .collect(Collectors.toList());
+            }
+
             if (args[0].equalsIgnoreCase("sqlbattle") && args[1].equalsIgnoreCase("here")) {
                 return Arrays.asList("set", "status", "schema")
                     .stream()
@@ -1134,6 +1305,12 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
             if (args[0].equalsIgnoreCase("sqlbattle") && args[1].equalsIgnoreCase("respawncheckpoint")) {
                 return Bukkit.getOnlinePlayers().stream()
                     .map(Player::getName)
+                    .filter(s -> s.toLowerCase().startsWith(args[2].toLowerCase()))
+                    .collect(Collectors.toList());
+            }
+
+            if (args[0].equalsIgnoreCase("sqlbattle") && args[1].equalsIgnoreCase("get")) {
+                return sqlBattleManager.getDebugItemSuggestions().stream()
                     .filter(s -> s.toLowerCase().startsWith(args[2].toLowerCase()))
                     .collect(Collectors.toList());
             }
@@ -1189,11 +1366,40 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
                     .filter(s -> s.toLowerCase().startsWith(args[3].toLowerCase()))
                     .collect(Collectors.toList());
             }
+
+            if (args[0].equalsIgnoreCase("sqlbattle") && args[1].equalsIgnoreCase("get")) {
+                return Bukkit.getOnlinePlayers().stream()
+                    .map(Player::getName)
+                    .filter(s -> s.toLowerCase().startsWith(args[3].toLowerCase()))
+                    .collect(Collectors.toList());
+            }
         }
         
         if (args.length == 3 && args[0].equalsIgnoreCase("set") && args[1].equalsIgnoreCase("menutype")) {
             return configManager.getAllMenuZones().keySet()
                 .stream()
+                .filter(s -> s.toLowerCase().startsWith(args[2].toLowerCase()))
+                .collect(Collectors.toList());
+        }
+
+        if (args.length == 3 && args[0].equalsIgnoreCase("set") && args[1].equalsIgnoreCase("requirement")) {
+            List<String> suggestions = new ArrayList<>();
+            suggestions.addAll(configManager.getAllMenuZones().keySet());
+            suggestions.addAll(questManager.getQuestNames());
+            return suggestions.stream()
+                .distinct()
+                .filter(s -> s.toLowerCase().startsWith(args[2].toLowerCase()))
+                .collect(Collectors.toList());
+        }
+
+        if (args.length == 4 && args[0].equalsIgnoreCase("set") && args[1].equalsIgnoreCase("requirement")) {
+            return questManager.getQuestNames().stream()
+                .filter(s -> s.toLowerCase().startsWith(args[3].toLowerCase()))
+                .collect(Collectors.toList());
+        }
+
+        if (args.length == 3 && args[0].equalsIgnoreCase("start") && args[1].equalsIgnoreCase("quest")) {
+            return questManager.getQuestNames().stream()
                 .filter(s -> s.toLowerCase().startsWith(args[2].toLowerCase()))
                 .collect(Collectors.toList());
         }
@@ -1490,7 +1696,7 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
      */
     private boolean handleSQLBattleCommand(CommandSender sender, String[] args) {
         if (args.length < 2) {
-            sender.sendMessage(ChatColor.RED + "Uso: /sm sqlbattle <here|start|stop|difficulty|reset|forcestage|respawncheckpoint|suggest|list|info|remove>");
+            sender.sendMessage(ChatColor.RED + "Uso: /sm sqlbattle <here|start|stop|difficulty|reset|forcestage|respawncheckpoint|stopgamemode|continuegamemode|get|suggest|list|info|ranking|remove>");
             return true;
         }
 
@@ -1514,6 +1720,12 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
                 return handleSQLBattleForceStageCommand(sender, args);
             case "respawncheckpoint":
                 return handleSQLBattleRespawnCheckpointCommand(sender, args);
+            case "stopgamemode":
+                return handleSQLBattleStopGamemodeCommand(sender);
+            case "continuegamemode":
+                return handleSQLBattleContinueGamemodeCommand(sender);
+            case "get":
+                return handleSQLBattleGetCommand(sender, args);
             case "suggest":
                 return handleSQLBattleSuggestCommand(sender, args);
             case "debug":
@@ -1522,12 +1734,97 @@ public class SeminarioCommand implements CommandExecutor, TabCompleter {
                 return handleSQLBattleListCommand(sender);
             case "info":
                 return handleSQLBattleInfoCommand(sender, args);
+            case "ranking":
+                return handleSQLBattleRankingCommand(sender, args);
             case "remove":
                 return handleSQLBattleRemoveCommand(sender, args);
             default:
-                sender.sendMessage(ChatColor.RED + "Uso: /sm sqlbattle <here|start|stop|difficulty|reset|forcestage|respawncheckpoint|suggest|debug|list|info|remove>");
+                sender.sendMessage(ChatColor.RED + "Uso: /sm sqlbattle <here|start|stop|difficulty|reset|forcestage|respawncheckpoint|stopgamemode|continuegamemode|get|suggest|debug|list|info|ranking|remove>");
                 return true;
         }
+    }
+
+    private boolean handleSQLBattleStopGamemodeCommand(CommandSender sender) {
+        sqlBattleManager.setGamemodeEnforcementEnabled(false);
+        sender.sendMessage(ChatColor.YELLOW + "Forzado de modo aventura pausado para SQL Battle.");
+        sender.sendMessage(ChatColor.GRAY + "Ahora puedes usar creativo para editar. Usa /sm sqlbattle continuegamemode para restaurarlo.");
+        return true;
+    }
+
+    private boolean handleSQLBattleContinueGamemodeCommand(CommandSender sender) {
+        sqlBattleManager.setGamemodeEnforcementEnabled(true);
+        sender.sendMessage(ChatColor.GREEN + "Forzado de modo aventura reanudado para SQL Battle.");
+        return true;
+    }
+
+    private boolean handleSQLBattleGetCommand(CommandSender sender, String[] args) {
+        if (args.length < 3) {
+            sender.sendMessage(ChatColor.RED + "Uso: /sm sqlbattle get <item> [jugador]");
+            return true;
+        }
+
+        Player target = null;
+        if (args.length >= 4) {
+            target = Bukkit.getPlayerExact(args[3]);
+            if (target == null) {
+                sender.sendMessage(ChatColor.RED + "Jugador no encontrado: " + args[3]);
+                return true;
+            }
+        } else if (sender instanceof Player) {
+            target = (Player) sender;
+        }
+
+        if (target == null) {
+            sender.sendMessage(ChatColor.RED + "Debes indicar un jugador desde consola.");
+            return true;
+        }
+
+        if (!sqlBattleManager.giveDebugItem(target, args[2])) {
+            return true;
+        }
+
+        if (!target.equals(sender)) {
+            sender.sendMessage(ChatColor.GREEN + "Item SQL Battle entregado a " + target.getName() + ".");
+        }
+        return true;
+    }
+
+    private boolean handleSQLBattleRankingCommand(CommandSender sender, String[] args) {
+        int limit = 10;
+        if (args.length >= 3) {
+            try {
+                limit = Integer.parseInt(args[2]);
+            } catch (NumberFormatException e) {
+                sender.sendMessage(ChatColor.RED + "Top inválido. Usa un número entero, por ejemplo: /sm sqlbattle ranking 10");
+                return true;
+            }
+        }
+
+        limit = Math.max(1, Math.min(50, limit));
+        Map<UUID, Integer> ranking = sqlBattleManager.getGlobalBattlePointsRanking();
+        if (ranking.isEmpty()) {
+            sender.sendMessage(ChatColor.YELLOW + "No hay puntos globales SQL Battle registrados aún.");
+            return true;
+        }
+
+        sender.sendMessage(ChatColor.GOLD + "=== Ranking Global SQL Battle (Top " + limit + ") ===");
+        int position = 1;
+        for (Map.Entry<UUID, Integer> entry : ranking.entrySet()) {
+            if (position > limit) {
+                break;
+            }
+
+            UUID playerId = entry.getKey();
+            String name = Bukkit.getOfflinePlayer(playerId).getName();
+            if (name == null || name.isBlank()) {
+                name = playerId.toString().substring(0, 8);
+            }
+
+            sender.sendMessage(ChatColor.YELLOW + "#" + position + " " + ChatColor.WHITE + name
+                + ChatColor.GRAY + " - " + ChatColor.AQUA + entry.getValue() + " pts");
+            position++;
+        }
+        return true;
     }
 
     private boolean handleSQLBattleSuggestCommand(CommandSender sender, String[] args) {

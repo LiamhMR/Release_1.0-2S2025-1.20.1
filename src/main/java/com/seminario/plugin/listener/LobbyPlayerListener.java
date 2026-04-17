@@ -3,11 +3,19 @@ package com.seminario.plugin.listener;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryDragEvent;
+import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.plugin.java.JavaPlugin;
 
 import com.seminario.plugin.manager.LobbyManager;
+import com.seminario.plugin.manager.SpawnpointManager;
 
 /**
  * Handles player interactions with lobby items
@@ -15,9 +23,13 @@ import com.seminario.plugin.manager.LobbyManager;
 public class LobbyPlayerListener implements Listener {
 
     private final LobbyManager lobbyManager;
+    private final SpawnpointManager spawnpointManager;
+    private final JavaPlugin plugin;
 
-    public LobbyPlayerListener(LobbyManager lobbyManager) {
+    public LobbyPlayerListener(LobbyManager lobbyManager, SpawnpointManager spawnpointManager, JavaPlugin plugin) {
         this.lobbyManager = lobbyManager;
+        this.spawnpointManager = spawnpointManager;
+        this.plugin = plugin;
     }
 
     @EventHandler
@@ -54,5 +66,97 @@ public class LobbyPlayerListener implements Listener {
             lobbyManager.usePositioningCompass(player);
             return;
         }
+
+        // Handle Quest selector item
+        if (item.getType() == Material.WRITABLE_BOOK && displayName.contains("QUEST")) {
+            event.setCancelled(true);
+            lobbyManager.openQuestSelector(player);
+            return;
+        }
+    }
+
+    // ── Inventory protection ──────────────────────────────────────────────────
+
+    /**
+     * Prevent players from moving lobby items within their inventory or to other containers.
+     */
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onInventoryClick(InventoryClickEvent event) {
+        if (!(event.getWhoClicked() instanceof Player player)) return;
+        if (!lobbyManager.hasLobbyInventory(player)) return;
+        if (event.getClickedInventory() == player.getInventory()) {
+            event.setCancelled(true);
+        }
+    }
+
+    /**
+     * Prevent drag-splitting items across the lobby inventory.
+     */
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onInventoryDrag(InventoryDragEvent event) {
+        if (!(event.getWhoClicked() instanceof Player player)) return;
+        if (!lobbyManager.hasLobbyInventory(player)) return;
+        int topSize = event.getView().getTopInventory().getSize();
+        for (int slot : event.getRawSlots()) {
+            if (slot >= topSize) {
+                event.setCancelled(true);
+                return;
+            }
+        }
+    }
+
+    /**
+     * Prevent players from dropping lobby items (Q key or drag out of window).
+     */
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onPlayerDropItem(PlayerDropItemEvent event) {
+        Player player = event.getPlayer();
+        if (lobbyManager.hasLobbyInventory(player)) {
+            event.setCancelled(true);
+        }
+    }
+
+    // ── Lobby death handling ──────────────────────────────────────────────────
+
+    /**
+     * When a player dies in the lobby world: suppress the death screen,
+     * keep inventory, and schedule an instant respawn.
+     */
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onPlayerDeath(PlayerDeathEvent event) {
+        Player player = event.getEntity();
+        if (!lobbyManager.isLobbyWorld(player.getWorld())) return;
+
+        event.setDeathMessage(null);
+        event.setKeepInventory(true);
+        event.getDrops().clear();
+        event.setKeepLevel(true);
+        event.setDroppedExp(0);
+
+        plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+            if (player.isOnline()) {
+                player.spigot().respawn();
+            }
+        }, 1L);
+    }
+
+    /**
+     * After the instant respawn, set the respawn location to spawn.
+     */
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onPlayerRespawn(PlayerRespawnEvent event) {
+        Player player = event.getPlayer();
+        if (!lobbyManager.isLobbyWorld(player.getWorld())) return;
+
+        org.bukkit.Location spawnLoc = spawnpointManager.getSpawnpointLocation();
+        if (spawnLoc != null) {
+            event.setRespawnLocation(spawnLoc);
+        }
+
+        plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+            if (player.isOnline()) {
+                lobbyManager.giveLobbyInventoryToPlayer(player);
+            }
+        }, 1L);
     }
 }

@@ -50,6 +50,11 @@ public class PlayerJoinListener implements Listener {
             // ALWAYS give lobby inventory after teleport with longer delay
             plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
                 plugin.getLogger().info("PlayerJoinListener: Checking world for " + player.getName() + " - Current world: " + player.getWorld().getName());
+
+                if (!lobbyManager.isLobbyWorld(player.getWorld())) {
+                    plugin.getLogger().info("PlayerJoinListener: Skipping lobby inventory for " + player.getName() + " (not in lobby world)");
+                    return;
+                }
                 
                 // Check if spawn location exists
                 if (spawnpointManager.getSpawnpointLocation() != null) {

@@ -1,12 +1,18 @@
 package com.seminario.plugin.manager;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.logging.Logger;
 
+import org.bukkit.Bukkit;
+import org.bukkit.ChatColor;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.OfflinePlayer;
 import org.bukkit.Sound;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
@@ -17,6 +23,10 @@ import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
+import org.bukkit.scoreboard.DisplaySlot;
+import org.bukkit.scoreboard.Objective;
+import org.bukkit.scoreboard.Scoreboard;
+import org.bukkit.scoreboard.ScoreboardManager;
 import org.bukkit.util.Vector;
 
 import com.seminario.plugin.config.ConfigManager;
@@ -32,11 +42,16 @@ public class LobbyManager {
     private final ConfigManager configManager;
     private final SpawnpointManager spawnpointManager;
     private final SurveyManager surveyManager;
+    private QuestManager questManager;
     
     // Lobby super jump tracking
     private final Map<Player, Integer> playerLobbySuperJumps;
     private final Map<Player, BukkitTask> playerRechargeTask;
     private final Map<Player, Long> playerLastJumpTime;
+
+    // SQL Battle ranking scoreboard
+    private SQLBattleManager sqlBattleManager;
+    private final Map<UUID, Scoreboard> lobbyScoreboards;
     
     // Constants
     private static final int LOBBY_SUPER_JUMP_HEIGHT = 30;
@@ -51,6 +66,7 @@ public class LobbyManager {
         this.playerLobbySuperJumps = new HashMap<>();
         this.playerRechargeTask = new HashMap<>();
         this.playerLastJumpTime = new HashMap<>();
+        this.lobbyScoreboards = new HashMap<>();
         
         logger.info("LobbyManager initialized");
     }
@@ -82,6 +98,10 @@ public class LobbyManager {
         // Slot 8 (index 7): Lobby Super Jump Star
         ItemStack superJumpStar = createLobbySuperJumpStar(player);
         player.getInventory().setItem(7, superJumpStar);
+
+        // Slot 7 (index 6): Quest selector item
+        ItemStack questItem = createQuestSelectorItem();
+        player.getInventory().setItem(6, questItem);
         
         // Slot 9 (index 8): Positioning Compass
         ItemStack compass = createPositioningCompass();
@@ -94,6 +114,9 @@ public class LobbyManager {
         if (setAdventureMode) {
             player.setGameMode(GameMode.ADVENTURE);
         }
+
+        // Show SQL Battle ranking scoreboard
+        showLobbyRankingScoreboard(player);
         
         logger.info("Gave lobby inventory to " + player.getName());
     }
@@ -136,6 +159,10 @@ public class LobbyManager {
         // Slot 8 (index 7): Lobby Super Jump Star
         ItemStack superJumpStar = createLobbySuperJumpStar(player);
         player.getInventory().setItem(7, superJumpStar);
+
+        // Slot 7 (index 6): Quest selector item
+        ItemStack questItem = createQuestSelectorItem();
+        player.getInventory().setItem(6, questItem);
         
         // Slot 9 (index 8): Positioning Compass
         ItemStack compass = createPositioningCompass();
@@ -148,6 +175,9 @@ public class LobbyManager {
         if (setAdventureMode) {
             player.setGameMode(GameMode.ADVENTURE);
         }
+
+        // Show SQL Battle ranking scoreboard
+        showLobbyRankingScoreboard(player);
         
         logger.info("Gave lobby inventory with Post-Test to " + player.getName());
     }
@@ -231,6 +261,22 @@ public class LobbyManager {
         compass.setItemMeta(meta);
         return compass;
     }
+
+    private ItemStack createQuestSelectorItem() {
+        ItemStack item = new ItemStack(Material.WRITABLE_BOOK);
+        ItemMeta meta = item.getItemMeta();
+
+        meta.setDisplayName("§d§lQUEST");
+        meta.setLore(java.util.Arrays.asList(
+            "§7Abre el selector de quests",
+            "§7para responder cuestionarios",
+            "",
+            "§eClick derecho para abrir"
+        ));
+
+        item.setItemMeta(meta);
+        return item;
+    }
     
     /**
      * Use lobby super jump
@@ -297,6 +343,14 @@ public class LobbyManager {
         }
         
         logger.info(player.getName() + " used positioning compass");
+    }
+
+    public void openQuestSelector(Player player) {
+        if (questManager == null) {
+            player.sendMessage("§cEl sistema de quest no está disponible en este momento.");
+            return;
+        }
+        questManager.openQuestSelectorMenu(player);
     }
     
     /**
@@ -389,6 +443,76 @@ public class LobbyManager {
         return playerLobbySuperJumps.containsKey(player);
     }
     
+    /**
+     * Inject SQLBattleManager for ranking display
+     */
+    public void setSQLBattleManager(SQLBattleManager manager) {
+        this.sqlBattleManager = manager;
+    }
+
+    public void setQuestManager(QuestManager questManager) {
+        this.questManager = questManager;
+    }
+
+    /**
+     * Show the SQL Battle TOP 3 ranking scoreboard to a lobby player.
+     */
+    public void showLobbyRankingScoreboard(Player player) {
+        if (sqlBattleManager == null) return;
+
+        ScoreboardManager sbManager = Bukkit.getScoreboardManager();
+        if (sbManager == null) return;
+
+        Scoreboard scoreboard = sbManager.getNewScoreboard();
+        Objective obj = scoreboard.registerNewObjective(
+            "lobby_rank",
+            "dummy",
+            ChatColor.GOLD + "" + ChatColor.BOLD + "⚔ TOP SQL BATTLE ⚔"
+        );
+        obj.setDisplaySlot(DisplaySlot.SIDEBAR);
+
+        Map<UUID, Integer> ranking = sqlBattleManager.getGlobalBattlePointsRanking();
+        List<Map.Entry<UUID, Integer>> top = new ArrayList<>(ranking.entrySet());
+        // Already sorted descending by getGlobalBattlePointsRanking
+        if (top.size() > 3) top = top.subList(0, 3);
+
+        String[] medals = {
+            ChatColor.YELLOW + "" + ChatColor.BOLD + "#1 ",
+            ChatColor.AQUA   + "" + ChatColor.BOLD + "#2 ",
+            ChatColor.GRAY   + "" + ChatColor.BOLD + "#3 "
+        };
+
+        if (top.isEmpty()) {
+            obj.getScore(ChatColor.GRAY + "Sin datos aún").setScore(1);
+        } else {
+            for (int i = 0; i < top.size(); i++) {
+                UUID uuid = top.get(i).getKey();
+                int pts = top.get(i).getValue();
+                OfflinePlayer op = Bukkit.getOfflinePlayer(uuid);
+                String name = op.getName() != null ? op.getName() : uuid.toString().substring(0, 8);
+                // Truncate to keep line short (max ~40 chars)
+                if (name.length() > 16) name = name.substring(0, 16);
+                String line = medals[i] + ChatColor.WHITE + name + " " + ChatColor.GREEN + pts + " pts";
+                obj.getScore(line).setScore(top.size() - i);
+            }
+        }
+
+        player.setScoreboard(scoreboard);
+        lobbyScoreboards.put(player.getUniqueId(), scoreboard);
+    }
+
+    /**
+     * Remove the lobby ranking scoreboard and restore the main scoreboard.
+     */
+    public void removeLobbyScoreboard(Player player) {
+        if (lobbyScoreboards.remove(player.getUniqueId()) != null) {
+            ScoreboardManager sbManager = Bukkit.getScoreboardManager();
+            if (sbManager != null) {
+                player.setScoreboard(sbManager.getMainScoreboard());
+            }
+        }
+    }
+
     /**
      * Check if a world is the lobby world
      */

@@ -10,6 +10,7 @@ import com.seminario.plugin.listener.FireworkTriggerListener;
 import com.seminario.plugin.listener.HarryNPCListener;
 import com.seminario.plugin.listener.LobbyPlayerListener;
 import com.seminario.plugin.listener.PlayerEventListener;
+import com.seminario.plugin.listener.QuestListener;
 import com.seminario.plugin.listener.SQLBattlePreparationListener;
 import com.seminario.plugin.listener.SQLBattleWaveListener;
 import com.seminario.plugin.listener.SQLEntryListener;
@@ -17,6 +18,7 @@ import com.seminario.plugin.manager.FireworkManager;
 import com.seminario.plugin.manager.FixSlideManager;
 import com.seminario.plugin.manager.HarryNPCManager;
 import com.seminario.plugin.manager.LobbyManager;
+import com.seminario.plugin.manager.QuestManager;
 import com.seminario.plugin.manager.SQLBattleManager;
 import com.seminario.plugin.manager.SQLDungeonManager;
 import com.seminario.plugin.manager.SlideManager;
@@ -45,6 +47,7 @@ public class App extends JavaPlugin {
     private SpawnpointManager spawnpointManager;
     private LobbyManager lobbyManager;
     private SurveyManager surveyManager;
+    private QuestManager questManager;
     private FireworkManager fireworkManager;
     private HarryNPCManager harryNPCManager;
     private PlayerEventListener playerEventListener;
@@ -79,7 +82,10 @@ public class App extends JavaPlugin {
         sqlDungeonManager = new SQLDungeonManager(this, configManager);
         spawnpointManager = new SpawnpointManager(this, configManager);
         surveyManager = new SurveyManager(this);
+        questManager = new QuestManager(this);
         lobbyManager = new LobbyManager(this, configManager, spawnpointManager, surveyManager);
+        lobbyManager.setSQLBattleManager(sqlBattleManager);
+        lobbyManager.setQuestManager(questManager);
         fireworkManager = new FireworkManager(this);
         harryNPCManager = new HarryNPCManager(this);
         
@@ -141,10 +147,13 @@ public class App extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new com.seminario.plugin.listener.WorldChangeListener(this, lobbyManager), this);
         
         // Register lobby player listener for lobby item interactions
-        getServer().getPluginManager().registerEvents(new LobbyPlayerListener(lobbyManager), this);
+        getServer().getPluginManager().registerEvents(new LobbyPlayerListener(lobbyManager, spawnpointManager, this), this);
         
         // Register survey listener for survey interactions
         getServer().getPluginManager().registerEvents(new com.seminario.plugin.listener.SurveyListener(surveyManager), this);
+
+        // Register quest listener for inventory questionnaires
+        getServer().getPluginManager().registerEvents(new QuestListener(questManager), this);
         
         // Register post-test listener for post-test item interactions
         getServer().getPluginManager().registerEvents(new com.seminario.plugin.listener.PostTestListener(surveyManager), this);
@@ -156,7 +165,7 @@ public class App extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new HarryNPCListener(harryNPCManager), this);
         
         // Register commands
-        SeminarioCommand seminarioCommand = new SeminarioCommand(configManager, slideManager, sqlDungeonManager, sqlBattleManager, spawnpointManager, lobbyManager, surveyManager, fireworkManager, harryNPCManager);
+        SeminarioCommand seminarioCommand = new SeminarioCommand(configManager, slideManager, sqlDungeonManager, sqlBattleManager, spawnpointManager, lobbyManager, surveyManager, questManager, fireworkManager, harryNPCManager);
         seminarioCommand.setFixSlideManager(fixSlideManager); // Connect FixSlideManager to commands
         var smCommand = getCommand("sm");
         if (smCommand != null) {
@@ -165,6 +174,10 @@ public class App extends JavaPlugin {
         } else {
             getLogger().severe("Failed to register /sm command!");
         }
+
+        // Inject QuestManager into ChestportGUI for requirement validation
+        com.seminario.plugin.gui.ChestportGUI.setQuestManager(questManager);
+
         
         getLogger().info("Menu zones and slideshow system initialized successfully!");
     }
@@ -233,6 +246,10 @@ public class App extends JavaPlugin {
         // Clean up Survey system
         if (surveyManager != null) {
             surveyManager.shutdown();
+        }
+
+        if (questManager != null) {
+            questManager.shutdown();
         }
         
         // Clean up all slide screens

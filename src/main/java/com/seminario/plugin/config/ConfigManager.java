@@ -8,6 +8,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.logging.Logger;
 
 import org.bukkit.Bukkit;
@@ -778,6 +779,57 @@ public class ConfigManager {
         }
 
         return false;
+    }
+
+    public int getSQLBattleGlobalPoints(UUID playerId) {
+        if (playerId == null) {
+            return 0;
+        }
+        if (sqlBattlesConfig == null) {
+            loadSQLBattles();
+        }
+        return sqlBattlesConfig.getInt("globalPoints." + playerId.toString(), 0);
+    }
+
+    public int addSQLBattleGlobalPoints(UUID playerId, int pointsToAdd) {
+        if (playerId == null) {
+            return 0;
+        }
+        if (pointsToAdd == 0) {
+            return getSQLBattleGlobalPoints(playerId);
+        }
+        if (sqlBattlesConfig == null) {
+            loadSQLBattles();
+        }
+
+        int current = sqlBattlesConfig.getInt("globalPoints." + playerId.toString(), 0);
+        int updated = Math.max(0, current + pointsToAdd);
+        sqlBattlesConfig.set("globalPoints." + playerId.toString(), updated);
+        saveSQLBattles();
+        return updated;
+    }
+
+    public Map<UUID, Integer> getSQLBattleGlobalPointsMap() {
+        Map<UUID, Integer> result = new HashMap<>();
+        if (sqlBattlesConfig == null) {
+            loadSQLBattles();
+        }
+
+        ConfigurationSection pointsSection = sqlBattlesConfig.getConfigurationSection("globalPoints");
+        if (pointsSection == null) {
+            return result;
+        }
+
+        for (String rawKey : pointsSection.getKeys(false)) {
+            try {
+                UUID playerId = UUID.fromString(rawKey);
+                int points = pointsSection.getInt(rawKey, 0);
+                result.put(playerId, points);
+            } catch (IllegalArgumentException ignored) {
+            }
+        }
+
+        return result;
     }
     
     /**

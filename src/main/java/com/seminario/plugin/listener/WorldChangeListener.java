@@ -4,7 +4,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
-import org.bukkit.GameMode;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -63,6 +62,11 @@ public class WorldChangeListener implements Listener {
             plugin.getSQLBattleManager().cleanupPlayerSession(player);
         }
 
+        // Remove lobby scoreboard if leaving lobby world
+        if (lobbyManager.isLobbyWorld(event.getFrom()) && !lobbyManager.isLobbyWorld(player.getWorld())) {
+            lobbyManager.removeLobbyScoreboard(player);
+        }
+
         if (plugin.getConfigManager().isSQLBattle(player.getWorld().getName())) {
             plugin.getLogger().info("WorldChangeListener: Player " + player.getName() + " entered SQL Battle world");
             preparePlayerForSQLBattleWorld(player);
@@ -111,6 +115,14 @@ public class WorldChangeListener implements Listener {
             return;
         }
 
+        if (plugin.getSQLBattleManager().isSpectatorTeleportItem(inHand)) {
+            event.setCancelled(true);
+            if (!plugin.getSQLBattleManager().teleportSpectatorToNextPlayer(player)) {
+                player.sendMessage("§cNo se pudo teletransportar al siguiente jugador.");
+            }
+            return;
+        }
+
         if (!plugin.getSQLBattleManager().isPrewaveStartItem(inHand)) {
             return;
         }
@@ -127,12 +139,11 @@ public class WorldChangeListener implements Listener {
         player.getInventory().clear();
         player.getInventory().setArmorContents(null);
         player.getInventory().setItemInOffHand(null);
-        player.setGameMode(GameMode.ADVENTURE);
         plugin.getSQLBattleManager().clearPrewaveStartItem(player);
         if (!plugin.getSQLBattleManager().startForPlayer(player)) {
             player.sendMessage("§cNo se pudo registrar al jugador en SQL Battle.");
         } else {
-            // Re-apply spectator mode next tick in case another listener overrides gamemode on world change.
+            // Re-apply simulated spectator state next tick in case another listener overrides player flags on world change.
             plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
                 if (!player.isOnline()) {
                     return;
@@ -141,7 +152,7 @@ public class WorldChangeListener implements Listener {
                     return;
                 }
                 if (plugin.getSQLBattleManager().isPlayerBattleSpectator(player)) {
-                    player.setGameMode(GameMode.SPECTATOR);
+                    plugin.getSQLBattleManager().enforceSimulatedSpectatorState(player);
                 }
             }, 1L);
         }

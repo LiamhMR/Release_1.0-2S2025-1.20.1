@@ -23,6 +23,7 @@ import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 import org.bukkit.util.Vector;
 
+import com.seminario.plugin.manager.QuestManager;
 import com.seminario.plugin.model.MenuZone;
 
 import net.kyori.adventure.text.Component;
@@ -35,6 +36,14 @@ public class ChestportGUI {
     
     private static final Map<UUID, MenuZone> playerZones = new HashMap<>();
     private static final Random random = new Random();
+    private static QuestManager questManager = null;
+    
+    /**
+     * Set the quest manager for requirement validation
+     */
+    public static void setQuestManager(QuestManager manager) {
+        questManager = manager;
+    }
     
     /**
      * Open the chestport confirmation GUI for a player
@@ -112,11 +121,28 @@ public class ChestportGUI {
     }
     
     /**
-     * Handle YES choice - teleport with effects
+     * Handle YES choice - teleport with effects (after validating quest requirements)
      * @param player The player
      * @param zone The menu zone
      */
     private static void handleYesChoice(Player player, MenuZone zone) {
+        // Check quest requirement
+        if (zone.getQuestRequirement() != null && !zone.getQuestRequirement().isEmpty()) {
+            if (questManager == null || !questManager.playerHasQuestAttempt(player.getUniqueId(), zone.getQuestRequirement())) {
+                // Requirement not met
+                handleRequirementFailed(player, zone);
+                return;
+            }
+        }
+
+        // Proceed with teleportation
+        doTeleport(player, zone);
+    }
+
+    /**
+     * Execute the actual teleportation sequence
+     */
+    private static void doTeleport(Player player, MenuZone zone) {
         Location teleportLoc = zone.getTeleportLocation();
         if (teleportLoc == null) {
             player.sendMessage(Component.text("Error: Ubicación de teleport no válida.", NamedTextColor.RED));
@@ -163,6 +189,31 @@ public class ChestportGUI {
                 );
             }, 20L // 1 seconds to reach peak height
         );
+    }
+
+    /**
+     * Handle quest requirement failure - reject teleport with custom message
+     * @param player The player
+     * @param zone The menu zone
+     */
+    private static void handleRequirementFailed(Player player, MenuZone zone) {
+        String questName = zone.getQuestRequirement();
+        String failureText = zone.getQuestFailureText() != null && !zone.getQuestFailureText().isEmpty()
+                ? zone.getQuestFailureText()
+                : "Debes completar el quest " + questName + " antes de usar este portal.";
+
+        // Show title with custom failure message
+        player.showTitle(net.kyori.adventure.title.Title.title(
+                Component.text("Acceso Denegado", NamedTextColor.RED),
+                Component.text(failureText, NamedTextColor.GOLD)
+        ));
+
+        // Play rejection sound
+        player.playSound(player.getLocation(), Sound.ENTITY_ENDERMAN_TELEPORT, 1.0f, 0.5f);
+
+        // Launch player with firework
+        player.sendMessage(Component.text("¡Debes completar el quest requerido!", NamedTextColor.RED));
+        handleNoChoice(player);
     }
     
     /**

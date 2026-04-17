@@ -37,6 +37,10 @@ public class MenuZone implements ConfigurationSerializable {
     private Location nextButtonLocation; // Ubicación del botón "siguiente"
     private Location backButtonLocation; // Ubicación del botón "anterior"
     
+    // Quest requirement for CHESTPORT
+    private String questRequirement; // Nombre del quest requerido
+    private String questFailureText; // Texto a mostrar si no tiene el quest
+    
     // General zone control
     private boolean disabled; // Si la zona está deshabilitada
     
@@ -305,6 +309,38 @@ public class MenuZone implements ConfigurationSerializable {
     }
     
     /**
+     * Get the quest requirement for this CHESTPORT zone
+     * @return The quest name or null if not set
+     */
+    public String getQuestRequirement() {
+        return questRequirement;
+    }
+    
+    /**
+     * Set the quest requirement for this CHESTPORT zone
+     * @param questName The name of the required quest
+     */
+    public void setQuestRequirement(String questName) {
+        this.questRequirement = questName;
+    }
+    
+    /**
+     * Get the failure text for the quest requirement
+     * @return The text to display if requirement is not met
+     */
+    public String getQuestFailureText() {
+        return questFailureText;
+    }
+    
+    /**
+     * Set the failure text for the quest requirement
+     * @param text The text to display
+     */
+    public void setQuestFailureText(String text) {
+        this.questFailureText = text;
+    }
+    
+    /**
      * Check if this FIXSLIDE has the render location configured
      * @return true if fixSlideRenderLocation is set
      */
@@ -394,6 +430,14 @@ public class MenuZone implements ConfigurationSerializable {
             data.put("backButtonLocation.x", backButtonLocation.getX());
             data.put("backButtonLocation.y", backButtonLocation.getY());
             data.put("backButtonLocation.z", backButtonLocation.getZ());
+        }
+        
+        // Serialize quest requirement data for CHESTPORT
+        if (questRequirement != null) {
+            data.put("questRequirement", questRequirement);
+        }
+        if (questFailureText != null) {
+            data.put("questFailureText", questFailureText);
         }
         
         // Serialize disabled state
@@ -504,6 +548,14 @@ public class MenuZone implements ConfigurationSerializable {
         // Load disabled state
         if (data.containsKey("disabled")) {
             zone.setDisabled((Boolean) data.get("disabled"));
+        }
+        
+        // Load quest requirement data if present
+        if (data.containsKey("questRequirement")) {
+            zone.setQuestRequirement((String) data.get("questRequirement"));
+        }
+        if (data.containsKey("questFailureText")) {
+            zone.setQuestFailureText((String) data.get("questFailureText"));
         }
             
         return zone;

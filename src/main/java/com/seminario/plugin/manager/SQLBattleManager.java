@@ -1,9 +1,11 @@
 package com.seminario.plugin.manager;
 
 import java.sql.Connection;
+import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -46,6 +48,7 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.scoreboard.DisplaySlot;
 import org.bukkit.scoreboard.Objective;
@@ -92,6 +95,19 @@ public class SQLBattleManager {
     private static final double CASTLE_DOMINATION_REQUIRED_SECONDS = 90.0D;
     private static final double CASTLE_DOMINATION_MIN_REAL_SECONDS = 30.0D;
     private static final long CASTLE_PARTICLE_INTERVAL_MILLIS = 2500L;
+    private static final Sound[] PREWAVE_RELAX_MUSIC = new Sound[] {
+        Sound.MUSIC_DISC_MALL,
+        Sound.MUSIC_DISC_MELLOHI,
+        Sound.MUSIC_DISC_FAR,
+        Sound.MUSIC_DISC_WAIT
+    };
+    private static final Sound[] WAVE_BATTLE_MUSIC = new Sound[] {
+        Sound.MUSIC_DISC_BLOCKS,
+        Sound.MUSIC_DISC_CHIRP,
+        Sound.MUSIC_DISC_CAT,
+        Sound.MUSIC_DISC_STRAD,
+        Sound.MUSIC_DISC_WARD
+    };
 
     private final JavaPlugin plugin;
     private final ConfigManager configManager;
@@ -100,11 +116,14 @@ public class SQLBattleManager {
     private final NamespacedKey sqlBattleRoleKey;
     private final NamespacedKey sqlBattlePrewaveStartItemKey;
     private final NamespacedKey sqlBattlePrewaveLeaveItemKey;
+    private final NamespacedKey sqlBattleSpectatorTpItemKey;
     private final Map<UUID, Integer> playerForcedStage;
+    private final Map<UUID, Integer> spectatorTargetCursor;
     private final Map<String, Boolean> worldWaveActive;
     private final Map<UUID, BattlePlayerSession> playerSessions;
     private final Map<String, BattleArenaSession> arenaSessions;
     private final Map<UUID, String> playerArenaWorld;
+    private boolean gamemodeEnforcementEnabled;
 
     public SQLBattleManager(JavaPlugin plugin, ConfigManager configManager) {
         this.plugin = plugin;
@@ -114,11 +133,14 @@ public class SQLBattleManager {
         this.sqlBattleRoleKey = new NamespacedKey(plugin, "sqlbattle_role");
         this.sqlBattlePrewaveStartItemKey = new NamespacedKey(plugin, "sqlbattle_prewave_start_item");
         this.sqlBattlePrewaveLeaveItemKey = new NamespacedKey(plugin, "sqlbattle_prewave_leave_item");
+        this.sqlBattleSpectatorTpItemKey = new NamespacedKey(plugin, "sqlbattle_spectator_tp_item");
         this.playerForcedStage = new HashMap<>();
+        this.spectatorTargetCursor = new HashMap<>();
         this.worldWaveActive = new HashMap<>();
         this.playerSessions = new HashMap<>();
         this.arenaSessions = new HashMap<>();
         this.playerArenaWorld = new HashMap<>();
+        this.gamemodeEnforcementEnabled = true;
     }
 
     public boolean createSQLBattle(World world) {
@@ -432,7 +454,7 @@ public class SQLBattleManager {
         BattleArenaSession arena = getOrCreateArena(worldName);
         UUID playerId = player.getUniqueId();
 
-        if (arena.state == ArenaState.IN_GAME || isArenaInProgress(arena)) {
+        if (arena.state == ArenaState.IN_GAME || isArenaInProgress(arena) || hasActiveMatchSessions(worldName)) {
             movePlayerToSpectator(player, arena, battleWorld, true);
             player.sendMessage(ChatColor.YELLOW + "Partida en curso. Entraste como espectador.");
             return true;
@@ -450,8 +472,9 @@ public class SQLBattleManager {
             return true;
         }
         if (arena.spectators.contains(playerId)) {
-            player.setGameMode(GameMode.SPECTATOR);
+            applySimulatedSpectatorMode(player);
             givePrewaveLeaveItem(player);
+            giveSpectatorTeleportItem(player);
             player.sendMessage(ChatColor.YELLOW + "Ya estas registrado como espectador en SQL Battle.");
             return true;
         }
@@ -464,6 +487,7 @@ public class SQLBattleManager {
 
         arena.participants.add(playerId);
         playerArenaWorld.put(playerId, worldName);
+        clearSimulatedSpectatorMode(player);
         player.setGameMode(GameMode.ADVENTURE);
         clearQueryResultBooks(player);
         clearPrewaveStartItem(player);
@@ -525,6 +549,20 @@ public class SQLBattleManager {
         return false;
     }
 
+    private boolean hasActiveMatchSessions(String worldName) {
+        for (BattlePlayerSession session : playerSessions.values()) {
+            if (!session.worldName.equalsIgnoreCase(worldName)) {
+                continue;
+            }
+            if (session.phase == BattleSessionPhase.PREPARATION
+                    || session.phase == BattleSessionPhase.WAVE_ACTIVE
+                    || session.phase == BattleSessionPhase.BETWEEN_WAVES) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private void startArenaCountdown(BattleArenaSession arena) {
         stopArenaCountdown(arena);
         clearArenaDominationBar(arena);
@@ -538,6 +576,7 @@ public class SQLBattleManager {
         arena.voteEligible.addAll(arena.participants);
         createArenaCountdownBar(arena);
         updateArenaCountdownBar(arena);
+        setWaveActive(arena.worldName, false);
 
         broadcastArenaMessage(arena, ChatColor.GOLD + "=== SQL Battle Multijugador ===");
         broadcastArenaMessage(arena, ChatColor.YELLOW + "Countdown iniciado: " + LOBBY_COUNTDOWN_SECONDS + "s.");
@@ -646,7 +685,9 @@ public class SQLBattleManager {
                 playerArenaWorld.remove(spectatorId);
                 continue;
             }
-            spectator.setGameMode(GameMode.SPECTATOR);
+            applySimulatedSpectatorMode(spectator);
+            givePrewaveLeaveItem(spectator);
+            giveSpectatorTeleportItem(spectator);
             if (battleWorld.hasCheckpointLocation()) {
                 spectator.teleport(battleWorld.getCheckpointLocation());
             } else if (battleWorld.hasPreparationLocation()) {
@@ -668,9 +709,10 @@ public class SQLBattleManager {
         arena.spectators.add(playerId);
         playerArenaWorld.put(playerId, arena.worldName);
 
-        player.setGameMode(GameMode.SPECTATOR);
+        applySimulatedSpectatorMode(player);
         clearPrewaveStartItem(player);
         givePrewaveLeaveItem(player);
+        giveSpectatorTeleportItem(player);
         if (teleport) {
             if (battleWorld.hasCheckpointLocation()) {
                 player.teleport(battleWorld.getCheckpointLocation());
@@ -876,13 +918,17 @@ public class SQLBattleManager {
     }
 
     public void showSchemaOverview(Player player) {
-        player.sendMessage(ChatColor.GOLD + "=== SQL Battle Schema (Provisional) ===");
-        player.sendMessage(ChatColor.YELLOW + "jugador" + ChatColor.GRAY + "(id, nombre, hp, mana, puntos_accion, oleada_actual, etapa_actual)");
-        player.sendMessage(ChatColor.YELLOW + "tipos_item" + ChatColor.GRAY + "(id, nombre, categoria, costo_mana, etapa_activacion)");
-        player.sendMessage(ChatColor.YELLOW + "almacen" + ChatColor.GRAY + "(item_id, cantidad)");
-        player.sendMessage(ChatColor.YELLOW + "inventario" + ChatColor.GRAY + "(item_id, cantidad, activo_en_etapa)");
-        player.sendMessage(ChatColor.YELLOW + "tipos_enemigo" + ChatColor.GRAY + "(id, nombre, debilidad, descripcion)");
-        player.sendMessage(ChatColor.YELLOW + "enemigos" + ChatColor.GRAY + "(id, tipo_id, hp, hp_max, estado, etapa_aparicion)");
+        player.sendMessage(ChatColor.GOLD + "=== SQL Battle Schema (PK/FK) ===");
+        player.sendMessage(ChatColor.YELLOW + "jugador" + ChatColor.GRAY + "(id PK, nombre, hp, mana, puntos_accion, oleada_actual, etapa_actual)");
+        player.sendMessage(ChatColor.YELLOW + "tipos_item" + ChatColor.GRAY + "(id PK, nombre, categoria, costo_mana, oleada_desbloqueo)");
+        player.sendMessage(ChatColor.YELLOW + "almacen" + ChatColor.GRAY + "(item_id PK, cantidad)");
+        player.sendMessage(ChatColor.DARK_GRAY + "  FK: almacen.item_id -> tipos_item.id");
+        player.sendMessage(ChatColor.YELLOW + "inventario" + ChatColor.GRAY + "(item_id PK, cantidad, activo_en_etapa)");
+        player.sendMessage(ChatColor.DARK_GRAY + "  FK: inventario.item_id -> tipos_item.id");
+        player.sendMessage(ChatColor.YELLOW + "tipos_enemigo" + ChatColor.GRAY + "(id PK, nombre, debilidad, descripcion)");
+        player.sendMessage(ChatColor.YELLOW + "enemigos" + ChatColor.GRAY + "(id PK, tipo_id FK, hp, hp_max, estado, etapa_aparicion)");
+        player.sendMessage(ChatColor.DARK_GRAY + "  FK: enemigos.tipo_id -> tipos_enemigo.id");
+        player.sendMessage(ChatColor.GRAY + "Checks: categoria valida, hp/hp_max > 0, etapa 1-3, activo_en_etapa 1-3, cantidad >= 0");
         player.sendMessage(ChatColor.DARK_GRAY + "JOIN tipico: enemigos.tipo_id -> tipos_enemigo.id, inventario/almacen.item_id -> tipos_item.id");
     }
 
@@ -962,10 +1008,12 @@ public class SQLBattleManager {
 
         setWaveActive(battleWorld.getWorldName(), false);
         clearQueryResultBooks(player);
+        player.setGameMode(GameMode.ADVENTURE);
         player.teleport(battleWorld.getPreparationLocation());
         player.setBedSpawnLocation(battleWorld.getCheckpointLocation(), true);
         givePrewaveStartItem(player);
         givePrewaveLeaveItem(player);
+        playPreparationMusic(player);
 
         createPreparationSidebar(player);
         showPreparationIntro(player);
@@ -1034,6 +1082,8 @@ public class SQLBattleManager {
             return;
         }
 
+        clearSimulatedSpectatorMode(player);
+        spectatorTargetCursor.remove(playerId);
         clearPrewaveStartItem(player);
 
         if (arena.countdownBar != null) {
@@ -1070,6 +1120,7 @@ public class SQLBattleManager {
             }
         }
 
+        stopBattleMusic(player);
         clearPrewaveStartItem(player);
     }
 
@@ -1363,7 +1414,8 @@ public class SQLBattleManager {
                 result = session.executor.execute(connection, query);
                 if (!result.isSuccess()) {
                     connection.rollback();
-                    player.sendMessage(ChatColor.RED + "Consulta rechazada o fallida: " + result.getErrorMessage());
+                    player.sendMessage(ChatColor.RED + "Consulta rechazada o fallida: "
+                        + formatBattleQueryFailureMessage(result.getErrorMessage()));
                     player.sendMessage(ChatColor.GRAY + "No se descontaron puntos de acción.");
                     updatePreparationSidebar(player);
                     return;
@@ -1379,7 +1431,8 @@ public class SQLBattleManager {
                     connection.rollback();
                 } catch (Exception ignored) {
                 }
-                player.sendMessage(ChatColor.RED + "No se pudo ejecutar la consulta: " + txError.getMessage());
+                player.sendMessage(ChatColor.RED + "No se pudo ejecutar la consulta: "
+                    + formatBattleQueryFailureMessage(txError.getMessage()));
                 player.sendMessage(ChatColor.GRAY + "No se descontaron puntos de acción.");
                 updatePreparationSidebar(player);
                 return;
@@ -1391,7 +1444,8 @@ public class SQLBattleManager {
             }
 
             if (!result.isSuccess()) {
-                player.sendMessage(ChatColor.RED + "Consulta rechazada o fallida: " + result.getErrorMessage());
+                player.sendMessage(ChatColor.RED + "Consulta rechazada o fallida: "
+                    + formatBattleQueryFailureMessage(result.getErrorMessage()));
                 player.sendMessage(ChatColor.GRAY + "No se descontaron puntos de acción.");
                 updatePreparationSidebar(player);
                 return;
@@ -1479,7 +1533,7 @@ public class SQLBattleManager {
     private String getSuggestionTitleById(int suggestionId) {
         return switch (suggestionId) {
             case 1 -> "Ver recursos disponibles";
-            case 2 -> "Ver items baratos por etapa";
+            case 2 -> "Ver items baratos por oleada";
             case 3 -> "Preparar equipo básico";
             case 4 -> "Preparar invocación etapa 3";
             default -> null;
@@ -1489,9 +1543,9 @@ public class SQLBattleManager {
     private String getSuggestedQueryById(int suggestionId) {
         return switch (suggestionId) {
             case 1 -> "SELECT a.item_id, t.nombre, a.cantidad FROM almacen a INNER JOIN tipos_item t ON a.item_id = t.id ORDER BY a.cantidad DESC LIMIT 5";
-            case 2 -> "SELECT id, nombre, categoria, costo_mana, etapa_activacion FROM tipos_item WHERE etapa_activacion <= 2 ORDER BY costo_mana ASC LIMIT 6";
+            case 2 -> "SELECT id, nombre, categoria, costo_mana, oleada_desbloqueo FROM tipos_item WHERE oleada_desbloqueo <= 3 ORDER BY oleada_desbloqueo ASC, costo_mana ASC LIMIT 8";
             case 3 -> "INSERT INTO inventario (item_id, cantidad, activo_en_etapa) VALUES (1, 1, 1)";
-            case 4 -> "INSERT INTO inventario (item_id, cantidad, activo_en_etapa) VALUES (10, 1, 3)";
+            case 4 -> "INSERT INTO inventario (item_id, cantidad, activo_en_etapa) VALUES (7, 1, 2)";
             default -> null;
         };
     }
@@ -1785,16 +1839,33 @@ public class SQLBattleManager {
         player.getInventory().setItem(7, leaveItem);
     }
 
+    private void giveSpectatorTeleportItem(Player player) {
+        ItemStack tpItem = new ItemStack(Material.COMPASS);
+        ItemMeta meta = tpItem.getItemMeta();
+        if (meta == null) {
+            return;
+        }
+
+        meta.setDisplayName(ChatColor.AQUA + "TP a jugador");
+        meta.setLore(List.of(
+            ChatColor.GRAY + "Click derecho para teletransportarte",
+            ChatColor.GRAY + "al siguiente jugador activo."
+        ));
+        meta.getPersistentDataContainer().set(sqlBattleSpectatorTpItemKey, PersistentDataType.BYTE, (byte) 1);
+        tpItem.setItemMeta(meta);
+        player.getInventory().setItem(6, tpItem);
+    }
+
     public void clearPrewaveStartItem(Player player) {
         for (int slot = 0; slot < player.getInventory().getSize(); slot++) {
             ItemStack item = player.getInventory().getItem(slot);
-            if (isPrewaveStartItem(item) || isPrewaveLeaveItem(item)) {
+            if (isPrewaveStartItem(item) || isPrewaveLeaveItem(item) || isSpectatorTeleportItem(item)) {
                 player.getInventory().setItem(slot, null);
             }
         }
 
         ItemStack offHand = player.getInventory().getItemInOffHand();
-        if (isPrewaveStartItem(offHand) || isPrewaveLeaveItem(offHand)) {
+        if (isPrewaveStartItem(offHand) || isPrewaveLeaveItem(offHand) || isSpectatorTeleportItem(offHand)) {
             player.getInventory().setItemInOffHand(null);
         }
     }
@@ -1823,12 +1894,98 @@ public class SQLBattleManager {
         return marker != null && marker == (byte) 1;
     }
 
+    public boolean isSpectatorTeleportItem(ItemStack item) {
+        if (item == null || item.getType() != Material.COMPASS || !item.hasItemMeta()) {
+            return false;
+        }
+        ItemMeta meta = item.getItemMeta();
+        if (meta == null) {
+            return false;
+        }
+        Byte marker = meta.getPersistentDataContainer().get(sqlBattleSpectatorTpItemKey, PersistentDataType.BYTE);
+        return marker != null && marker == (byte) 1;
+    }
+
+    public boolean teleportSpectatorToNextPlayer(Player spectator) {
+        if (!isPlayerBattleSpectator(spectator)) {
+            spectator.sendMessage(ChatColor.RED + "Solo los espectadores pueden usar este item.");
+            return false;
+        }
+
+        applySimulatedSpectatorMode(spectator);
+
+        String worldName = playerArenaWorld.get(spectator.getUniqueId());
+        if (worldName == null) {
+            spectator.sendMessage(ChatColor.RED + "No estás vinculado a una arena SQL Battle.");
+            return false;
+        }
+
+        BattleArenaSession arena = arenaSessions.get(worldName);
+        if (arena == null) {
+            spectator.sendMessage(ChatColor.RED + "No se encontró la arena activa.");
+            return false;
+        }
+
+        List<Player> candidates = new ArrayList<>();
+        for (UUID participantId : arena.participants) {
+            Player participant = Bukkit.getPlayer(participantId);
+            if (participant == null || !participant.isOnline() || participant.isDead()) {
+                continue;
+            }
+            if (!participant.getWorld().getName().equalsIgnoreCase(worldName)) {
+                continue;
+            }
+            candidates.add(participant);
+        }
+
+        if (candidates.isEmpty()) {
+            spectator.sendMessage(ChatColor.YELLOW + "No hay jugadores activos para espectear en este momento.");
+            return false;
+        }
+
+        int cursor = spectatorTargetCursor.getOrDefault(spectator.getUniqueId(), 0);
+        int index = Math.floorMod(cursor, candidates.size());
+        Player target = candidates.get(index);
+        spectatorTargetCursor.put(spectator.getUniqueId(), index + 1);
+
+        spectator.teleport(target.getLocation());
+        spectator.sendMessage(ChatColor.AQUA + "Ahora estás specteando a " + ChatColor.WHITE + target.getName() + ChatColor.AQUA + ".");
+        return true;
+    }
+
+    public void enforceSimulatedSpectatorState(Player player) {
+        if (!isPlayerBattleSpectator(player)) {
+            return;
+        }
+        applySimulatedSpectatorMode(player);
+    }
+
+    private void applySimulatedSpectatorMode(Player player) {
+        player.setGameMode(GameMode.ADVENTURE);
+        player.setAllowFlight(true);
+        player.setFlying(true);
+        player.setInvulnerable(true);
+        player.setCollidable(false);
+        player.setCanPickupItems(false);
+        player.addPotionEffect(new PotionEffect(PotionEffectType.INVISIBILITY, Integer.MAX_VALUE, 0, false, false, false));
+    }
+
+    private void clearSimulatedSpectatorMode(Player player) {
+        player.setFlying(false);
+        player.setAllowFlight(false);
+        player.setInvulnerable(false);
+        player.setCollidable(true);
+        player.setCanPickupItems(true);
+        player.removePotionEffect(PotionEffectType.INVISIBILITY);
+    }
+
     private void beginWavePhase(Player player, BattlePlayerSession session, String reason) {
         if (session.phase != BattleSessionPhase.PREPARATION) {
             return;
         }
 
         clearPrewaveStartItem(player);
+        playWaveMusic(player);
         session.phase = BattleSessionPhase.WAVE_ACTIVE;
         session.lastPreparationEndReason = reason;
         session.lastKnownStage = FIRST_WAVE_STAGE;
@@ -1851,6 +2008,7 @@ public class SQLBattleManager {
             player.setBedSpawnLocation(session.checkpointLocation, true);
         }
 
+        player.setGameMode(GameMode.ADVENTURE);
         setWaveActive(session.worldName, true);
         spawnWaveEntities(player, session);
         giveInventoryItemsToPlayer(player, session, FIRST_WAVE_STAGE);
@@ -2028,10 +2186,213 @@ public class SQLBattleManager {
         }
     }
 
+    private String formatBattleQueryFailureMessage(String rawMessage) {
+        if (rawMessage == null || rawMessage.isBlank()) {
+            return "Error desconocido.";
+        }
+
+        String message = rawMessage.trim();
+        String normalized = message.toLowerCase();
+        if (normalized.contains("stock insuficiente en almacen")) {
+            return message;
+        }
+        if (normalized.contains("primary key") || normalized.contains("unique index") || normalized.contains("unique constraint")) {
+            return "Ese item ya estaba preparado en inventario. Usa UPDATE inventario SET cantidad = ... WHERE item_id = ...";
+        }
+        return message;
+    }
+
+    public boolean giveDebugItem(Player player, String itemToken) {
+        int itemId = resolveDebugItemId(itemToken);
+        if (itemId < 0) {
+            player.sendMessage(ChatColor.RED + "Item SQL Battle desconocido: " + itemToken);
+            player.sendMessage(ChatColor.GRAY + "Ejemplos: 8, hielo, fuego, lluvia, tnt, espada_hierro");
+            return false;
+        }
+
+        ItemStack stack = createBattleItemStack(itemId, 1);
+        if (stack == null) {
+            player.sendMessage(ChatColor.RED + "Ese item no se puede entregar como item físico para debug.");
+            return false;
+        }
+
+        player.getInventory().addItem(stack);
+        player.sendMessage(ChatColor.GREEN + "Recibiste 1x " + getBattleItemDebugName(itemId) + ChatColor.GRAY + " para pruebas.");
+        return true;
+    }
+
+    public List<String> getDebugItemSuggestions() {
+        return List.of(
+            "1", "2", "4", "7", "8", "9", "11", "13", "20", "21", "22", "23",
+            "espada_hierro", "espada_diamante", "arco", "fuego", "hielo", "pocion",
+            "flechas", "filete", "lluvia", "tnt", "ballesta", "manzana_dorada"
+        );
+    }
+
+    public Location getBattleRespawnLocation(Player player) {
+        BattlePlayerSession session = playerSessions.get(player.getUniqueId());
+        if (session != null) {
+            if (session.checkpointLocation != null) {
+                return session.checkpointLocation.clone();
+            }
+            if (session.preparationLocation != null) {
+                return session.preparationLocation.clone();
+            }
+        }
+
+        String worldName = playerArenaWorld.get(player.getUniqueId());
+        if (worldName == null) {
+            return null;
+        }
+
+        SQLBattleWorld battleWorld = configManager.getSQLBattle(worldName);
+        if (battleWorld == null) {
+            return null;
+        }
+        if (battleWorld.hasCheckpointLocation()) {
+            return battleWorld.getCheckpointLocation().clone();
+        }
+        if (battleWorld.hasPreparationLocation()) {
+            return battleWorld.getPreparationLocation().clone();
+        }
+        if (battleWorld.hasWaveStartLocation()) {
+            return battleWorld.getWaveStartLocation().clone();
+        }
+        return null;
+    }
+
+    public boolean shouldAutoRespawnBattlePlayer(Player player) {
+        return playerArenaWorld.containsKey(player.getUniqueId()) || playerSessions.containsKey(player.getUniqueId());
+    }
+
+    private int resolveDebugItemId(String itemToken) {
+        String normalized = normalizeBattleItemToken(itemToken);
+        return switch (normalized) {
+            case "1", "espadadehierro", "espadahierro", "iron_sword", "ironsword" -> 1;
+            case "2", "espadadediamante", "espadadiamante", "diamond_sword", "diamondsword" -> 2;
+            case "3", "hachademadera", "woodenaxe", "wooden_axe" -> 3;
+            case "4", "arco", "arcoelfico", "bow" -> 4;
+            case "5", "armaduradehierro", "pecheradehierro", "ironchestplate" -> 5;
+            case "6", "armaduradediamante", "pecheradediamante", "diamondchestplate" -> 6;
+            case "7", "fuego", "hechizodefuego", "fire" -> 7;
+            case "8", "hielo", "hechizodehielo", "ice" -> 8;
+            case "9", "pocion", "pociondevida", "heal", "healing" -> 9;
+            case "11", "flechas", "arrow", "arrows" -> 11;
+            case "12", "escudo", "shield" -> 12;
+            case "13", "filete", "filetecocido", "cookedbeef", "beef" -> 13;
+            case "14", "pantalonesdehierro", "ironleggings" -> 14;
+            case "15", "pantalonesdediamante", "diamondleggings" -> 15;
+            case "16", "cascodehierro", "ironhelmet" -> 16;
+            case "17", "cascodediamante", "diamondhelmet" -> 17;
+            case "18", "botasdehierro", "ironboots" -> 18;
+            case "19", "botasdediamante", "diamondboots" -> 19;
+            case "20", "lluvia", "lluviadeflechas", "arrowrain" -> 20;
+            case "21", "tnt", "tnttemporizada", "timedtnt" -> 21;
+            case "22", "ballesta", "ballestadeasedio", "crossbow" -> 22;
+            case "23", "manzana", "manzanadorada", "goldenapple" -> 23;
+            default -> -1;
+        };
+    }
+
+    private String normalizeBattleItemToken(String token) {
+        if (token == null) {
+            return "";
+        }
+        String normalized = Normalizer.normalize(token, Normalizer.Form.NFD)
+            .replaceAll("\\p{M}+", "")
+            .toLowerCase();
+        return normalized.replaceAll("[^a-z0-9]", "");
+    }
+
+    private String getBattleItemDebugName(int itemId) {
+        return switch (itemId) {
+            case 1 -> "Espada de Hierro";
+            case 2 -> "Espada de Diamante";
+            case 3 -> "Hacha de Madera";
+            case 4 -> "Arco Elfico";
+            case 5 -> "Armadura de Hierro";
+            case 6 -> "Armadura de Diamante";
+            case 7 -> "Hechizo de Fuego";
+            case 8 -> "Hechizo de Hielo";
+            case 9 -> "Pocion de Vida";
+            case 11 -> "Flechas";
+            case 12 -> "Escudo";
+            case 13 -> "Filete Cocido";
+            case 14 -> "Pantalones de Hierro";
+            case 15 -> "Pantalones de Diamante";
+            case 16 -> "Casco de Hierro";
+            case 17 -> "Casco de Diamante";
+            case 18 -> "Botas de Hierro";
+            case 19 -> "Botas de Diamante";
+            case 20 -> "Hechizo Lluvia de Flechas";
+            case 21 -> "TNT Temporizada";
+            case 22 -> "Ballesta de Asedio";
+            case 23 -> "Manzana Dorada";
+            default -> "Item SQL Battle";
+        };
+    }
+
+    private ItemStack createBattleItemStack(int itemId, int amount) {
+        Material material = mapItemIdToMaterial(itemId);
+        if (material == null) {
+            return null;
+        }
+
+        if (material == Material.POTION) {
+            ItemStack potion = new ItemStack(Material.POTION, Math.max(1, amount));
+            org.bukkit.inventory.meta.PotionMeta meta = (org.bukkit.inventory.meta.PotionMeta) potion.getItemMeta();
+            if (meta != null) {
+                meta.setBasePotionData(new org.bukkit.potion.PotionData(org.bukkit.potion.PotionType.INSTANT_HEAL, false, false));
+                meta.setDisplayName(ChatColor.RED + "Pocion de Vida");
+                potion.setItemMeta(meta);
+            }
+            return potion;
+        }
+
+        ItemStack item = new ItemStack(material, Math.max(1, amount));
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            switch (itemId) {
+                case 7 -> {
+                    meta.setDisplayName(ChatColor.GOLD + "Hechizo de Fuego");
+                    meta.setLore(List.of(
+                        ChatColor.GRAY + "Click derecho durante la oleada.",
+                        ChatColor.DARK_GRAY + "Explota al impactar."
+                    ));
+                }
+                case 8 -> {
+                    meta.setDisplayName(ChatColor.AQUA + "Hechizo de Hielo");
+                    meta.setLore(List.of(
+                        ChatColor.GRAY + "Click derecho durante la oleada.",
+                        ChatColor.DARK_GRAY + "Congela y ralentiza enemigos."
+                    ));
+                }
+                case 20 -> {
+                    meta.setDisplayName(ChatColor.LIGHT_PURPLE + "Hechizo Lluvia de Flechas");
+                    meta.setLore(List.of(
+                        ChatColor.GRAY + "Click derecho durante la oleada.",
+                        ChatColor.DARK_GRAY + "Invoca una lluvia sobre enemigos cercanos."
+                    ));
+                }
+                case 21 -> {
+                    meta.setDisplayName(ChatColor.RED + "TNT Temporizada");
+                    meta.setLore(List.of(
+                        ChatColor.GRAY + "Click derecho durante la oleada.",
+                        ChatColor.DARK_GRAY + "Se lanza y explota tras 5 segundos."
+                    ));
+                }
+                default -> {
+                }
+            }
+            item.setItemMeta(meta);
+        }
+        return item;
+    }
+
     private Material mapItemIdToMaterial(int itemId) {
         return switch (itemId) {
-            case 1  -> Material.DIAMOND_SWORD;
-            case 2  -> Material.IRON_SWORD;
+            case 1  -> Material.IRON_SWORD;
+            case 2  -> Material.DIAMOND_SWORD;
             case 3  -> Material.WOODEN_AXE;
             case 4  -> Material.BOW;
             case 5  -> Material.IRON_CHESTPLATE;
@@ -2042,6 +2403,16 @@ public class SQLBattleManager {
             case 11 -> Material.ARROW;
             case 12 -> Material.SHIELD;
             case 13 -> Material.COOKED_BEEF;
+            case 14 -> Material.IRON_LEGGINGS;
+            case 15 -> Material.DIAMOND_LEGGINGS;
+            case 16 -> Material.IRON_HELMET;
+            case 17 -> Material.DIAMOND_HELMET;
+            case 18 -> Material.IRON_BOOTS;
+            case 19 -> Material.DIAMOND_BOOTS;
+            case 20 -> Material.SPECTRAL_ARROW;
+            case 21 -> Material.TNT;
+            case 22 -> Material.CROSSBOW;
+            case 23 -> Material.GOLDEN_APPLE;
             default -> null; // 10 = golem (spawned as entity), unknown items ignored
         };
     }
@@ -2086,6 +2457,40 @@ public class SQLBattleManager {
         return getActiveSession(player) != null;
     }
 
+    public boolean isGamemodeEnforcementEnabled() {
+        return gamemodeEnforcementEnabled;
+    }
+
+    public void setGamemodeEnforcementEnabled(boolean enabled) {
+        this.gamemodeEnforcementEnabled = enabled;
+    }
+
+    public void enforceBattleParticipantState(Player player) {
+        if (!gamemodeEnforcementEnabled) {
+            return;
+        }
+
+        if (!isPlayerInBattleArena(player) || isPlayerBattleSpectator(player)) {
+            return;
+        }
+
+        if (player.getGameMode() != GameMode.ADVENTURE) {
+            player.setGameMode(GameMode.ADVENTURE);
+        }
+        if (player.isFlying()) {
+            player.setFlying(false);
+        }
+        if (player.getAllowFlight()) {
+            player.setAllowFlight(false);
+        }
+        if (player.isInvulnerable()) {
+            player.setInvulnerable(false);
+        }
+        if (!player.isCollidable()) {
+            player.setCollidable(true);
+        }
+    }
+
     public boolean isPlayerBattleSpectator(Player player) {
         String worldName = playerArenaWorld.get(player.getUniqueId());
         if (worldName == null) {
@@ -2096,6 +2501,22 @@ public class SQLBattleManager {
             return false;
         }
         return arena.spectators.contains(player.getUniqueId());
+    }
+
+    public int getGlobalBattlePoints(UUID playerId) {
+        return configManager.getSQLBattleGlobalPoints(playerId);
+    }
+
+    public Map<UUID, Integer> getGlobalBattlePointsRanking() {
+        Map<UUID, Integer> raw = configManager.getSQLBattleGlobalPointsMap();
+        List<Map.Entry<UUID, Integer>> sorted = new ArrayList<>(raw.entrySet());
+        sorted.sort((a, b) -> Integer.compare(b.getValue(), a.getValue()));
+
+        Map<UUID, Integer> ordered = new LinkedHashMap<>();
+        for (Map.Entry<UUID, Integer> entry : sorted) {
+            ordered.put(entry.getKey(), entry.getValue());
+        }
+        return ordered;
     }
 
     public boolean isPlayerInBattleArena(Player player) {
@@ -2128,6 +2549,9 @@ public class SQLBattleManager {
         }
 
         incrementArenaDeaths(arena, player.getUniqueId());
+        if (session.checkpointLocation != null) {
+            player.setBedSpawnLocation(session.checkpointLocation, true);
+        }
     }
 
     private void tagBattleEntity(LivingEntity entity, BattlePlayerSession session, UUID ownerId, String role) {
@@ -2174,43 +2598,70 @@ public class SQLBattleManager {
     }
 
     public void handleBattleEntityDeath(LivingEntity entity) {
-        String ownerRaw = entity.getPersistentDataContainer().get(sqlBattleOwnerKey, PersistentDataType.STRING);
-        String sessionRaw = entity.getPersistentDataContainer().get(sqlBattleSessionKey, PersistentDataType.STRING);
-        String role = entity.getPersistentDataContainer().get(sqlBattleRoleKey, PersistentDataType.STRING);
-        if (ownerRaw == null || sessionRaw == null || role == null) {
+        BattleEntitySessionRef ref = resolveEntitySessionRef(entity);
+        if (ref == null) {
             return;
         }
 
-        UUID ownerId;
-        UUID sessionId;
-        try {
-            ownerId = UUID.fromString(ownerRaw);
-            sessionId = UUID.fromString(sessionRaw);
-        } catch (IllegalArgumentException ex) {
+        if ("summon".equalsIgnoreCase(ref.role)) {
+            ref.session.summonedEntityIds.remove(entity.getUniqueId());
             return;
         }
 
-        BattlePlayerSession session = playerSessions.get(ownerId);
-        if (session == null || !session.sessionId.equals(sessionId)) {
+        if (!"enemy".equalsIgnoreCase(ref.role) || ref.session.phase != BattleSessionPhase.WAVE_ACTIVE) {
             return;
         }
 
-        if ("summon".equalsIgnoreCase(role)) {
-            session.summonedEntityIds.remove(entity.getUniqueId());
-            return;
-        }
-
-        if (!"enemy".equalsIgnoreCase(role) || session.phase != BattleSessionPhase.WAVE_ACTIVE) {
-            return;
-        }
-
-        BattleArenaSession arena = arenaSessions.get(session.worldName);
+        BattleArenaSession arena = arenaSessions.get(ref.session.worldName);
         Player killer = entity.getKiller();
         if (arena != null && killer != null && arena.participants.contains(killer.getUniqueId())) {
             incrementArenaKills(arena, killer.getUniqueId());
         }
 
-        session.enemyEntityIds.remove(entity.getUniqueId());
+        handleEnemyElimination(ref.ownerId, ref.session, entity.getUniqueId());
+    }
+
+    public void handleBattleEntityRemoved(LivingEntity entity) {
+        BattleEntitySessionRef ref = resolveEntitySessionRef(entity);
+        if (ref == null) {
+            return;
+        }
+
+        if ("summon".equalsIgnoreCase(ref.role)) {
+            ref.session.summonedEntityIds.remove(entity.getUniqueId());
+            return;
+        }
+
+        if (!"enemy".equalsIgnoreCase(ref.role) || ref.session.phase != BattleSessionPhase.WAVE_ACTIVE) {
+            return;
+        }
+
+        handleEnemyElimination(ref.ownerId, ref.session, entity.getUniqueId());
+    }
+
+    public void reconcileActiveWaveProgress() {
+        for (Map.Entry<UUID, BattlePlayerSession> entry : playerSessions.entrySet()) {
+            UUID ownerId = entry.getKey();
+            BattlePlayerSession session = entry.getValue();
+            if (session == null || session.phase != BattleSessionPhase.WAVE_ACTIVE) {
+                continue;
+            }
+
+            pruneInvalidTrackedEntities(session.enemyEntityIds);
+            if (getTrackedLiveCount(session.enemyEntityIds) > 0) {
+                continue;
+            }
+
+            handleEnemyElimination(ownerId, session, null);
+        }
+    }
+
+    private void handleEnemyElimination(UUID ownerId, BattlePlayerSession session, UUID removedEnemyId) {
+        if (removedEnemyId != null) {
+            session.enemyEntityIds.remove(removedEnemyId);
+        }
+
+        pruneInvalidTrackedEntities(session.enemyEntityIds);
 
         if (getTrackedLiveCount(session.enemyEntityIds) > 0) {
             return;
@@ -2222,6 +2673,49 @@ public class SQLBattleManager {
         }
 
         advanceStageOrCompleteWave(player, session);
+    }
+
+    private void pruneInvalidTrackedEntities(Set<UUID> entityIds) {
+        if (entityIds.isEmpty()) {
+            return;
+        }
+
+        Set<UUID> stale = new HashSet<>();
+        for (UUID entityId : entityIds) {
+            Entity entity = Bukkit.getEntity(entityId);
+            if (!(entity instanceof LivingEntity livingEntity) || !livingEntity.isValid() || livingEntity.isDead()) {
+                stale.add(entityId);
+            }
+        }
+
+        if (!stale.isEmpty()) {
+            entityIds.removeAll(stale);
+        }
+    }
+
+    private BattleEntitySessionRef resolveEntitySessionRef(LivingEntity entity) {
+        String ownerRaw = entity.getPersistentDataContainer().get(sqlBattleOwnerKey, PersistentDataType.STRING);
+        String sessionRaw = entity.getPersistentDataContainer().get(sqlBattleSessionKey, PersistentDataType.STRING);
+        String role = entity.getPersistentDataContainer().get(sqlBattleRoleKey, PersistentDataType.STRING);
+        if (ownerRaw == null || sessionRaw == null || role == null) {
+            return null;
+        }
+
+        UUID ownerId;
+        UUID sessionId;
+        try {
+            ownerId = UUID.fromString(ownerRaw);
+            sessionId = UUID.fromString(sessionRaw);
+        } catch (IllegalArgumentException ex) {
+            return null;
+        }
+
+        BattlePlayerSession session = playerSessions.get(ownerId);
+        if (session == null || !session.sessionId.equals(sessionId)) {
+            return null;
+        }
+
+        return new BattleEntitySessionRef(ownerId, session, role);
     }
 
     private void advanceStageOrCompleteWave(Player player, BattlePlayerSession session) {
@@ -2473,6 +2967,7 @@ public class SQLBattleManager {
 
             givePrewaveStartItem(player);
             givePrewaveLeaveItem(player);
+            playPreparationMusic(player);
 
             updatePreparationSidebar(player);
             player.sendMessage(ChatColor.AQUA + "Comienza la fase prewave de la oleada " + nextWave + ".");
@@ -2517,6 +3012,8 @@ public class SQLBattleManager {
         clearArenaDominationBar(arena);
         arena.state = ArenaState.FINISHED;
 
+        Map<UUID, Integer> awardedGlobalPoints = persistArenaGlobalPoints(arena);
+
         setWaveActive(arena.worldName, false);
         SQLBattleWorld battleWorld = configManager.getSQLBattle(arena.worldName);
 
@@ -2535,16 +3032,42 @@ public class SQLBattleManager {
             if (reason != null && !reason.isEmpty()) {
                 player.sendMessage(reason);
             }
+            if (arena.participants.contains(playerId)) {
+                int awarded = awardedGlobalPoints.getOrDefault(playerId, 0);
+                int total = getGlobalBattlePoints(playerId);
+                if (awarded > 0) {
+                    player.sendMessage(ChatColor.AQUA + "Puntos globales SQL Battle: +" + awarded + ChatColor.GRAY + " (Total: " + total + ")");
+                } else {
+                    player.sendMessage(ChatColor.GRAY + "Puntos globales SQL Battle: " + total);
+                }
+            }
+            stopBattleMusic(player);
             player.sendMessage(ChatColor.GOLD + "Partida finalizada. Regresando al hub...");
             playEpicFinishMusic(player);
-            teleportPlayerToHub(player, battleWorld);
+            if (player.isDead()) {
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    if (!player.isOnline()) {
+                        return;
+                    }
+                    player.spigot().respawn();
+                    Bukkit.getScheduler().runTask(plugin, () -> {
+                        if (player.isOnline()) {
+                            teleportPlayerToHub(player, battleWorld);
+                        }
+                    });
+                });
+            } else {
+                teleportPlayerToHub(player, battleWorld);
+            }
         }
 
         for (UUID participantId : new ArrayList<>(arena.participants)) {
             playerArenaWorld.remove(participantId);
+            spectatorTargetCursor.remove(participantId);
         }
         for (UUID spectatorId : new ArrayList<>(arena.spectators)) {
             playerArenaWorld.remove(spectatorId);
+            spectatorTargetCursor.remove(spectatorId);
         }
 
         arena.participants.clear();
@@ -2558,6 +3081,21 @@ public class SQLBattleManager {
         arena.state = ArenaState.WAITING;
         arena.countdownRemaining = 0;
         arena.countdownMax = 0;
+    }
+
+    private Map<UUID, Integer> persistArenaGlobalPoints(BattleArenaSession arena) {
+        Map<UUID, Integer> awardedByPlayer = new HashMap<>();
+        for (UUID participantId : arena.participants) {
+            int kills = arena.killsByPlayer.getOrDefault(participantId, 0);
+            int deaths = arena.deathsByPlayer.getOrDefault(participantId, 0);
+            int matchPoints = Math.max(0, kills - (2 * deaths));
+            if (matchPoints <= 0) {
+                continue;
+            }
+            configManager.addSQLBattleGlobalPoints(participantId, matchPoints);
+            awardedByPlayer.put(participantId, matchPoints);
+        }
+        return awardedByPlayer;
     }
 
     private void createArenaCountdownBar(BattleArenaSession arena) {
@@ -2598,6 +3136,7 @@ public class SQLBattleManager {
     }
 
     private void teleportPlayerToHub(Player player, SQLBattleWorld battleWorld) {
+        clearSimulatedSpectatorMode(player);
         Location hub = configManager.getServerSpawnpoint();
         if (hub != null) {
             player.teleport(hub);
@@ -2630,6 +3169,32 @@ public class SQLBattleManager {
                 player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.4f);
             }
         }, 26L);
+    }
+
+    private void playPreparationMusic(Player player) {
+        playRandomBattleMusic(player, PREWAVE_RELAX_MUSIC, 0.65f, 1.0f);
+    }
+
+    private void playWaveMusic(Player player) {
+        playRandomBattleMusic(player, WAVE_BATTLE_MUSIC, 0.8f, 1.0f);
+    }
+
+    private void playRandomBattleMusic(Player player, Sound[] playlist, float volume, float pitch) {
+        if (playlist == null || playlist.length == 0) {
+            return;
+        }
+        stopBattleMusic(player);
+        int index = ThreadLocalRandom.current().nextInt(playlist.length);
+        player.playSound(player, playlist[index], volume, pitch);
+    }
+
+    private void stopBattleMusic(Player player) {
+        for (Sound music : PREWAVE_RELAX_MUSIC) {
+            player.stopSound(music);
+        }
+        for (Sound music : WAVE_BATTLE_MUSIC) {
+            player.stopSound(music);
+        }
     }
 
     private enum ArenaState {
@@ -2778,6 +3343,18 @@ public class SQLBattleManager {
 
         private static Location cloneLocation(Location location) {
             return location != null ? location.clone() : null;
+        }
+    }
+
+    private static final class BattleEntitySessionRef {
+        private final UUID ownerId;
+        private final BattlePlayerSession session;
+        private final String role;
+
+        private BattleEntitySessionRef(UUID ownerId, BattlePlayerSession session, String role) {
+            this.ownerId = ownerId;
+            this.session = session;
+            this.role = role;
         }
     }
 }

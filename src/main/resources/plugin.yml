@@ -13,10 +13,14 @@ commands:
       /sm create fixslide <nombre_fixslide> <nombre_zona_slide> - Create a fixed slide presentation linked to a SLIDE zone
       /sm create SQLDUNGEON <mundo> - Create SQL dungeon
       /sm create SQLBATTLE [mundo] - Create SQL battle world using current world when omitted
+      /sm create quest <nombre> - Create inventory quest YAML
       /sm remove <name> - Remove a menu zone
       /sm list - List all menu zones
       /sm info [name] - Show info about menu zones
       /sm set menutype <name> <type> - Set menu zone type
+      /sm set requirement <quest_1> <quest_2> - Require quest_2 before quest_1
+      /sm set requirement <menuzone> <quest> <texto> - Set chestport quest requirement
+      /sm start quest <nombre> - Start a quest manually
       /sm slide <name> <add|edit|delete|fix|posfix|list> [args] - Manage slides and presentation settings
       /sm fixslide list - List all FIXSLIDE zones
       /sm fixslide <name> <fix|nextbutton|backbutton|+X|-X|+Z|-Z> - Configure fixed slide presentations
@@ -128,6 +132,12 @@ permissions:
     default: true
   seminario.survey.view:
     description: Allows viewing survey information and statistics
+    default: true
+  seminario.quest.create:
+    description: Allows creating inventory-based quests
+    default: op
+  seminario.quest.start:
+    description: Allows starting inventory-based quests
     default: true
   seminario.lobby.inventory:
     description: Allows getting lobby inventory items
