@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comandos del Plugin SQL</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 11pt;
+            line-height: 1.5;
+            margin: 40px;
+            color: #333;
+        }
+
+        h1 {
+            font-size: 16pt;
+            font-weight: bold;
+            margin-top: 24px;
+            margin-bottom: 12px;
+        }
+
+        h2 {
+            font-size: 14pt;
+            font-weight: bold;
+            margin-top: 24px;
+            margin-bottom: 4px;
+        }
+
+        h3 {
+            font-size: 12pt;
+            font-weight: bold;
+            margin-top: 12px;
+            margin-bottom: 6px;
+        }
+
+        p {
+            margin-top: 0;
+            margin-bottom: 6px;
+            text-align: justify;
+        }
+
+        ul {
+            margin: 6px 0 6px 18px;
+        }
+
+        li {
+            margin-bottom: 2px;
+        }
+
+        code {
+            font-family: 'Courier New', monospace;
+            font-size: 10pt;
+            background-color: transparent;
+            padding: 0;
+            border-radius: 0;
+        }
+
+        .command-block {
+            display: list-item;
+            list-style-type: disc;
+            list-style-position: outside;
+            margin-left: 22px;
+            margin-bottom: 8px;
+            padding: 0 0 0 2px;
+            background-color: transparent;
+            border-left: none;
+        }
+
+        .command-block strong {
+            font-family: 'Courier New', monospace;
+            display: block;
+            margin-bottom: 2px;
+        }
+
+        .command-block p {
+            margin-top: 0;
+            margin-bottom: 0;
+        }
+
+        .command-block::marker {
+            color: #666;
+        }
+
+        .note {
+            margin-left: 8px;
+            margin-bottom: 6px;
+            padding: 4px 0 4px 8px;
+            background-color: transparent;
+            border-left: 2px solid #d6d6d6;
+        }
+
+        .intro {
+            margin-bottom: 10px;
+        }
+
+        .syntax-note {
+            margin: 10px 0;
+            padding: 4px 0 4px 8px;
+            background-color: transparent;
+            border-left: 2px solid #d6d6d6;
+            border-radius: 0;
+        }
+    </style>
+</head>
+<body>
+
+<h1>11.6. Comandos del Plugin SQL</h1>
+
+<p class="intro">
+    Dado que ya se han explicado puntos importantes del desarrollo, en los que tenemos la creación y mantenimiento del servidor de Minecraft, la creación de un proyecto utilizando el framework de Maven y el uso de la API de Bukkit para desarrollar un plugin para Minecraft, contamos con un contexto general sobre cómo se construyó el juego y de qué manera se fueron integrando sus distintas modalidades y herramientas de administración.
+</p>
+
+<p class="intro">
+    A continuación se detallan los comandos programados dentro del plugin y su uso práctico. La sección conserva la numeración del informe para que pueda integrarse directamente con el resto de la documentación.
+</p>
+
+<div class="syntax-note">
+    <strong>Notación de sintaxis:</strong>
+    <ul>
+        <li>Los argumentos requeridos se indican entre signos <code>&lt; &gt;</code>.</li>
+        <li>Los argumentos opcionales se indican entre los signos <code>[ ]</code>.</li>
+    </ul>
+</div>
+
+<hr>
+
+<h2>11.6.1. Comandos create</h2>
+
+<div class="command-block">
+    <strong>/sm create menuzone &lt;nombre&gt;</strong>
+    <p>Requiere haber realizado previamente una selección de dos posiciones con <code>//wand</code> de WorldEdit. Guarda dicha selección con el nombre indicado como una <em>menuZone</em>.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm create SQLDUNGEON &lt;mundo&gt;</strong>
+    <p>Define un mundo como escenario de SQL DUNGEON, donde <em>mundo</em> corresponde al nombre del mundo dentro de los archivos del servidor.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm create SQLBATTLE [mundo]</strong>
+    <p>Registra un mundo como escenario de SQL Battle. Si el comando se ejecuta sin especificar el mundo, se utiliza el mundo actual del administrador que lo invoca.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm create quest &lt;nombre&gt;</strong>
+    <p>Crea un cuestionario QUEST en formato YAML. El plugin genera automáticamente un archivo base dentro del directorio <code>quest/</code>, pensado para que luego se edite y se complete con las preguntas y respuestas correspondientes.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm create fixslide &lt;nombre_fixslide&gt; &lt;nombre_zona_slide&gt;</strong>
+    <p>Crea una presentación fija a partir de una menuZone previamente definida como slide. <code>&lt;nombre_zona_slide&gt;</code> debe existir y <code>&lt;nombre_fixslide&gt;</code> será el nombre de la nueva zona de tipo <em>fixslide</em>.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm remove &lt;nombre_menu_zone&gt;</strong>
+    <p>Elimina una menuZone. Este comando no se puede deshacer.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm createfire &lt;color&gt; [color2] [color3]</strong>
+    <p>Crea un trigger de fuegos artificiales en la posición donde se ejecuta el comando. Funciona como una menuZone de una sola coordenada: al pasar por ese punto, el jugador activará el efecto. El primer color es obligatorio y se pueden añadir hasta dos colores adicionales.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm createcreeperfire &lt;color&gt; [color2] [color3]</strong>
+    <p>Su funcionamiento es equivalente al comando anterior, con la diferencia de que el fuego artificial utiliza la forma visual de Creeper.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm firework list</strong>
+    <p>Lista todos los triggers de fuegos artificiales actualmente configurados.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm firework remove &lt;id&gt;</strong>
+    <p>Permite eliminar un trigger de fuegos artificiales utilizando su identificador. Dicho id puede obtenerse con el comando anterior.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm list</strong>
+    <p>Lista todas las menuZones creadas en la configuración del plugin.</p>
+</div>
+
+<hr>
+
+<h2>11.6.2. Comandos set</h2>
+
+<p>Las menuZones son localizaciones o regiones que detectan cuando un jugador se encuentra dentro de ellas y activan un comportamiento específico según el tipo asignado. Los siguientes comandos permiten definir o complementar ese comportamiento.</p>
+
+<div class="command-block">
+    <strong>/sm set menutype &lt;nombre&gt; &lt;tipo&gt;</strong>
+    <p>Permite definir el tipo de comportamiento que tendrá una menuZone. Entre las opciones disponibles se encuentran:</p>
+    <ul>
+        <li><strong>chestport:</strong> teletransporta al jugador a través de una GUI de decisión.</li>
+        <li><strong>chest:</strong> abre una GUI de opciones; esta funcionalidad no quedó terminada en esta entrega.</li>
+        <li><strong>slide:</strong> utiliza la zona para mostrar presentaciones gráficas.</li>
+        <li><strong>laboratory:</strong> identifica una zona como espacio de prácticas de base de datos.</li>
+    </ul>
+</div>
+
+<div class="command-block">
+    <strong>/sm set requirement &lt;quest_1&gt; &lt;quest_2&gt;</strong>
+    <p>Establece un requisito entre dos quests. Para responder o iniciar <code>&lt;quest_1&gt;</code>, el jugador debe haber completado previamente <code>&lt;quest_2&gt;</code>. Este mecanismo permite construir secuencias de progresión entre actividades.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm set requirement &lt;menuzone&gt; &lt;quest&gt; &lt;texto_si_no&gt;</strong>
+    <p>Asocia un quest como requisito de acceso para una menuZone, especialmente en zonas tipo <em>chestport</em>. Si el jugador no ha completado el quest indicado, se mostrará el mensaje configurado y no se le permitirá continuar.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm spawnpoint set</strong>
+    <p>Define la posición actual del jugador como el punto de spawn por defecto y configura el mundo actual como lobby principal. Al conectarse al servidor, los jugadores aparecerán en ese punto y las salidas de las modalidades también podrán redirigirlos allí.</p>
+</div>
+
+<hr>
+
+<h2>11.6.3. Comandos de presentaciones gráficas</h2>
+
+<div class="note">
+    <strong>Prerequisito:</strong> para usar comandos <em>slide</em>, la menuZone correspondiente debe haber sido configurada previamente como tipo <code>slide</code>.
+</div>
+
+<div class="command-block">
+    <strong>/sm slide &lt;nombre_slide&gt; add &lt;url&gt;</strong>
+    <p>Añade una diapositiva al slide indicado. La URL debe apuntar idealmente a una imagen PNG. Otros formatos como JPG o GIF no fueron completamente validados. La diapositiva se agrega al final de la secuencia existente.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm slide &lt;nombre_slide&gt; edit &lt;numero_diapositiva&gt; &lt;url&gt;</strong>
+    <p>Permite sustituir la imagen asociada a una diapositiva ya existente dentro del slide.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm slide &lt;nombre_slide&gt; delete &lt;numero_diapositiva&gt;</strong>
+    <p>Elimina una diapositiva específica. Tras la eliminación, las restantes se renumeran automáticamente para mantener continuidad en la secuencia.</p>
+</div>
+
+<h3>Presentaciones fijas (fixslide)</h3>
+
+<p>Los <em>fixslide</em> corresponden a una variante de slide en la que la presentación se muestra de forma permanente en una ubicación específica, sin requerir que el jugador active una zona con su movimiento. Para crearlos, primero se debe disponer de un slide convencional con sus diapositivas configuradas.</p>
+
+<div class="command-block">
+    <strong>/sm disabled &lt;nombre&gt;</strong>
+    <p>Desactiva una menuZone. Se utiliza, por ejemplo, cuando una zona slide deja de requerir activación directa porque será reutilizada como fixslide.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm fixslide &lt;nombre_fixslide&gt; posfix</strong>
+    <p>Guarda la posición fija en la que se renderizará la presentación.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm fixslide &lt;nombre_fixslide&gt; fix &lt;+X|-X|+Z|-Z&gt;</strong>
+    <p>Configura la orientación de la presentación, es decir, la dirección hacia la que mirarán las diapositivas dentro del mundo.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm fixslide &lt;nombre_fixslide&gt; &lt;backbutton|nextbutton&gt;</strong>
+    <p>Posiciona el botón interactivo para retroceder o avanzar de diapositiva en la ubicación donde se ejecuta el comando.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm fixslide list</strong>
+    <p>Muestra la lista de todos los fixslide registrados.</p>
+</div>
+
+<hr>
+
+<h2>11.6.4. Comandos de Harry</h2>
+
+<p>Harry es un NPC que cumple una función orientadora dentro del servidor. Cuando el jugador interactúa con él, puede recibir indicaciones sobre el espacio en el que se encuentra o sobre las acciones que puede realizar.</p>
+
+<div class="command-block">
+    <strong>/sm newharry &lt;nombre&gt;</strong>
+    <p>Crea un Harry en la posición exacta donde se ejecuta el comando.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm harry &lt;nombre&gt; addLine &lt;texto&gt;</strong>
+    <p>Añade una línea de diálogo al Harry especificado. El texto puede incluir códigos de color utilizando el prefijo <code>&amp;</code>, por ejemplo <code>&amp;6Hola Mundo</code> para mostrar el mensaje en amarillo.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm harry &lt;nombre&gt; editLine &lt;número_linea&gt; &lt;texto&gt;</strong>
+    <p>Permite editar una línea específica del diálogo existente, indicada por su número dentro del conjunto de líneas del NPC.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm harry &lt;nombre&gt; lines</strong>
+    <p>Muestra todas las líneas de diálogo actualmente configuradas para ese Harry.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm harry &lt;nombre&gt; remove</strong>
+    <p>Elimina por completo al NPC indicado.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm harry &lt;nombre&gt; reset</strong>
+    <p>Es un comando utilitario pensado para resolver duplicaciones de entidades. Al reiniciar el servidor, puede ocurrir que algunas entidades de Harry no sean limpiadas correctamente si la zona no se encontraba cargada. Este comando debe ejecutarse cerca del NPC para limpiar duplicados y volver a posicionarlo.</p>
+</div>
+
+<hr>
+
+<h2>11.6.5. Comandos SQL</h2>
+
+<div class="command-block">
+    <strong>/sm sql schema</strong>
+    <p>Permite visualizar por chat la estructura de tablas de la base de datos utilizada para SQL Dungeon. Fue un comando provisional incorporado cuando todavía no se había formalizado el diagrama ERD.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm sql here lvl add &lt;número&gt; &lt;dificultad&gt;</strong>
+    <p>Agrega un nivel al mundo SQL DUNGEON actual. <em>Número</em> corresponde al identificador del nivel y <em>dificultad</em> es un valor entre 1 y 5, utilizado para seleccionar el grupo de desafíos SQL adecuado desde el banco de consultas.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm sql here lvl delete &lt;número&gt;</strong>
+    <p>Elimina un nivel específico dentro del mundo SQL DUNGEON actual.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm sql here set entry &lt;número_nivel&gt;</strong>
+    <p>Configura la posición actual como punto de interacción del nivel indicado. En esa ubicación el jugador podrá introducir la consulta SQL que resuelve el desafío. En la implementación del proyecto, habitualmente se usaron bloques de comando para marcar visualmente este punto.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm sql info</strong>
+    <p>Detalla el progreso del jugador dentro del SQL DUNGEON actual, el estado de la sesión y la información de los niveles configurados.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm sql bank info</strong>
+    <p>Muestra información general sobre el banco de desafíos SQL, incluyendo la cantidad disponible por nivel de dificultad.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm sql bank regenerate &lt;mundo_SQL_DUNGEON&gt; &lt;nivel&gt;</strong>
+    <p><strong>Estado:</strong> deprecado en la práctica. Originalmente se usó para regenerar el challenge asignado a un nivel, aunque después el diseño evolucionó hacia una selección más dinámica de desafíos.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm sql repair</strong>
+    <p><strong>Estado:</strong> comando de reparación heredado. Se empleó para corregir niveles que hubiesen quedado sin challenge asociado, pero en la versión actual su uso es más bien residual.</p>
+</div>
+
+<hr>
+
+<h2>11.6.6. Comandos SQL Battle</h2>
+
+<p>SQL Battle es una modalidad de defensa de castillo en la que los jugadores deben prepararse e interactuar con una base de datos SQL para desplegar recursos antes de cada oleada. Sus comandos cubren tanto la configuración espacial del mundo como la administración y depuración de sesiones.</p>
+
+<h3>Registro y configuración del mundo</h3>
+
+<div class="command-block">
+    <strong>/sm sqlbattle here set entry</strong>
+    <p>Guarda, a partir de una selección de WorldEdit, la zona en la que se capturará el chat SQL del jugador. Dentro de esta región se interceptan los mensajes para tratarlos como consultas SQL.</p>
+    <div class="note">
+        <strong>Prerequisito:</strong> requiere una selección activa con <code>//wand</code>.</n+    </div>
+</div>
+
+<div class="command-block">
+    <strong>/sm sqlbattle here set wavestart</strong>
+    <p>Guarda la posición actual como punto de inicio de oleada. Allí serán ubicados los jugadores participantes cuando la fase activa comience.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm sqlbattle here set checkpoint</strong>
+    <p>Define la posición actual como checkpoint de respawn para pruebas o reaparición durante la modalidad.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm sqlbattle here set prewave</strong>
+    <p>Establece la zona de preparación previa a la oleada, donde los jugadores disponen de un momento para consultar la base de datos y planificar la defensa.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm sqlbattle here set summonzone</strong>
+    <p>Guarda una región seleccionada con WorldEdit como zona de invocación. Allí se materializan los resultados de ciertas acciones o invocaciones ligadas a la fase SQL.</p>
+    <div class="note">
+        <strong>Prerequisito:</strong> requiere una selección activa con <code>//wand</code>.</div>
+</div>
+
+<div class="command-block">
+    <strong>/sm sqlbattle here set enemyspawn</strong>
+    <p>Define, a partir de una región de WorldEdit, el espacio desde el cual aparecerán los enemigos en cada oleada.</p>
+    <div class="note">
+        <strong>Prerequisito:</strong> requiere una selección activa con <code>//wand</code>.</div>
+</div>
+
+<div class="command-block">
+    <strong>/sm sqlbattle here set castle</strong>
+    <p>Configura la región del castillo que los jugadores deben defender. La modalidad evalúa esta zona como el objetivo principal del asedio.</p>
+    <div class="note">
+        <strong>Prerequisito:</strong> requiere una selección activa con <code>//wand</code>.</div>
+</div>
+
+<div class="command-block">
+    <strong>/sm sqlbattle here status</strong>
+    <p>Muestra el estado resumido del SQL Battle configurado en el mundo actual: si está activo, si la configuración está completa y qué zonas fundamentales han sido registradas.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm sqlbattle here schema</strong>
+    <p>Muestra por chat un resumen del esquema de tablas utilizado en la base de datos en memoria de SQL Battle.</p>
+</div>
+
+<h3>Inicio, detención y control</h3>
+
+<div class="command-block">
+    <strong>/sm sqlbattle start [mundo]</strong>
+    <p>Inicia SQL Battle. Si se ejecuta desde un jugador sin indicar mundo, intenta comenzar la sesión en el mundo actual. Si se ejecuta indicando un mundo, registra a los jugadores de esa arena e inicia el flujo de la modalidad.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm sqlbattle stop [mundo]</strong>
+    <p>Detiene la sesión de SQL Battle y coloca el mundo en estado pacífico, cerrando además las sesiones activas de preparación.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm sqlbattle difficulty &lt;peaceful|easy|normal|hard&gt; [mundo]</strong>
+    <p>Cambia la dificultad del mundo asociado a la arena SQL Battle. Se utiliza principalmente para depuración o preparación del escenario.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm sqlbattle reset [mundo]</strong>
+    <p>Resetea el estado de prueba de los jugadores. Si lo ejecuta un jugador dentro de una arena SQL Battle, aplica el reinicio sobre sí mismo; si se especifica un mundo, puede resetear a los jugadores de esa arena.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm sqlbattle forcestage &lt;1|2|3&gt; [jugador]</strong>
+    <p>Fuerza manualmente una etapa interna de la oleada para fines de testeo. Es un comando administrativo pensado para validar transiciones de estados.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm sqlbattle respawncheckpoint [jugador]</strong>
+    <p>Envía al jugador indicado, o al propio ejecutor si no se especifica, al checkpoint configurado para la arena actual.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm sqlbattle stopgamemode</strong>
+    <p>Pausa el forzado automático del modo aventura dentro de SQL Battle, permitiendo editar temporalmente la arena con mayor libertad.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm sqlbattle continuegamemode</strong>
+    <p>Reanuda el forzado del modo aventura una vez finalizada la edición o depuración del escenario.</p>
+</div>
+
+<h3>Inspección, apoyo y depuración</h3>
+
+<div class="command-block">
+    <strong>/sm sqlbattle get &lt;item&gt; [jugador]</strong>
+    <p>Entrega un item de depuración relacionado con SQL Battle al jugador indicado. Se trata de una herramienta administrativa para pruebas del modo de juego.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm sqlbattle suggest &lt;1|2|3|4&gt;</strong>
+    <p>Ejecuta una sugerencia de preparación predefinida durante la fase SQL. El sistema usa identificadores numéricos para disparar recetas o acciones guiadas.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm sqlbattle debug [mundo]</strong>
+    <p>Muestra información visual de depuración, como partículas o indicadores espaciales, para ayudar a verificar la configuración de la arena.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm sqlbattle list</strong>
+    <p>Lista todos los mundos registrados como SQL Battle e indica si su configuración está completa o todavía incompleta.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm sqlbattle info [mundo]</strong>
+    <p>Muestra la configuración detallada de una arena SQL Battle: dificultad, zonas registradas, puntos de entrada, checkpoint, preparación, invocación, spawn enemigo y castillo.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm sqlbattle ranking [top]</strong>
+    <p>Muestra el ranking global de puntos acumulados en SQL Battle, limitado por defecto a los 10 primeros jugadores, aunque puede ajustarse el número de resultados.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm sqlbattle remove [mundo]</strong>
+    <p>Elimina la configuración SQL Battle del mundo indicado, o del mundo actual si el comando lo ejecuta un jugador dentro de él.</p>
+</div>
+
+<hr>
+
+<h2>11.6.7. Comandos QUEST y encuestas</h2>
+
+<p>El sistema QUEST se utiliza para integrar cuestionarios y requisitos de progresión dentro del servidor. Se complementa con el sistema de encuestas, utilizado especialmente para pre-test, post-test y otras actividades de evaluación.</p>
+
+<h3>Comandos QUEST</h3>
+
+<div class="command-block">
+    <strong>/sm create quest &lt;nombre&gt;</strong>
+    <p>Crea un archivo base de quest con estructura YAML. Sirve como punto de partida para preparar un cuestionario o actividad evaluativa dentro del juego.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm start quest &lt;nombre&gt;</strong>
+    <p>Inicia el quest indicado para el jugador que ejecuta el comando. Su uso está pensado para lanzar actividades concretas una vez que el archivo ya fue configurado.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm set requirement &lt;quest_1&gt; &lt;quest_2&gt;</strong>
+    <p>Define prerequisitos entre quests, de manera que uno no pueda responderse o activarse sin haber completado otro previamente.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm set requirement &lt;menuzone&gt; &lt;quest&gt; &lt;texto_si_no&gt;</strong>
+    <p>Vincula un quest a una zona del mundo para restringir el acceso hasta que el requisito académico haya sido cumplido.</p>
+</div>
+
+<h3>Comandos de encuestas</h3>
+
+<div class="command-block">
+    <strong>/sm survey create &lt;nombre_encuesta&gt;</strong>
+    <p>Crea una nueva encuesta vacía. A partir de ella se podrán agregar preguntas que luego serán respondidas por los jugadores.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm survey add &lt;nombre_encuesta&gt; &lt;pregunta&gt;</strong>
+    <p>Añade una pregunta a la encuesta especificada. Las preguntas se almacenan en orden y pueden ser usadas posteriormente como parte de un formulario in-game.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm survey edit &lt;nombre_encuesta&gt; &lt;nro_pregunta&gt; &lt;nueva_pregunta&gt;</strong>
+    <p>Edita una pregunta ya existente dentro de la encuesta, indicando el número correspondiente y el nuevo texto.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm survey start &lt;nombre_encuesta&gt;</strong>
+    <p>Inicia la encuesta indicada para el jugador que ejecuta el comando.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm survey list</strong>
+    <p>Lista todas las encuestas disponibles, mostrando además cuántas preguntas y respuestas registra cada una.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm survey info &lt;nombre_encuesta&gt;</strong>
+    <p>Muestra información detallada de la encuesta: cantidad de preguntas, total de respuestas y listado de ítems configurados.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm survey stats &lt;nombre_encuesta&gt;</strong>
+    <p>Presenta las estadísticas acumuladas de una encuesta, incluyendo promedios y distribución de calificaciones por pregunta.</p>
+</div>
+
+<div class="command-block">
+    <strong>/sm defaultsurvey &lt;nombre_encuesta&gt;</strong>
+    <p>Establece una encuesta como post-test por defecto en la posición actual del jugador. Esto permite que, al finalizar cierta actividad, el servidor disponga de un mecanismo estándar para activar la evaluación final.</p>
+</div>
+
+</body>
+</html>
