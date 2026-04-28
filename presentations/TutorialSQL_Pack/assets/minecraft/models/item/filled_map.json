@@ -1,0 +1,104 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "minecraft:item/filled_map"
+  },
+  "overrides": [
+    {
+      "predicate": {
+        "custom_model_data": 3001
+      },
+      "model": "slides:item/map_slide_1"
+    },
+    {
+      "predicate": {
+        "custom_model_data": 3002
+      },
+      "model": "slides:item/map_slide_2"
+    },
+    {
+      "predicate": {
+        "custom_model_data": 3003
+      },
+      "model": "slides:item/map_slide_3"
+    },
+    {
+      "predicate": {
+        "custom_model_data": 3004
+      },
+      "model": "slides:item/map_slide_4"
+    },
+    {
+      "predicate": {
+        "custom_model_data": 3005
+      },
+      "model": "slides:item/map_slide_5"
+    },
+    {
+      "predicate": {
+        "custom_model_data": 3006
+      },
+      "model": "slides:item/map_slide_6"
+    },
+    {
+      "predicate": {
+        "custom_model_data": 3007
+      },
+      "model": "slides:item/map_slide_7"
+    },
+    {
+      "predicate": {
+        "custom_model_data": 3008
+      },
+      "model": "slides:item/map_slide_8"
+    },
+    {
+      "predicate": {
+        "custom_model_data": 3009
+      },
+      "model": "slides:item/map_slide_9"
+    },
+    {
+      "predicate": {
+        "custom_model_data": 3010
+      },
+      "model": "slides:item/map_slide_10"
+    },
+    {
+      "predicate": {
+        "custom_model_data": 3011
+      },
+      "model": "slides:item/map_slide_11"
+    },
+    {
+      "predicate": {
+        "custom_model_data": 3012
+      },
+      "model": "slides:item/map_slide_12"
+    },
+    {
+      "predicate": {
+        "custom_model_data": 3013
+      },
+      "model": "slides:item/map_slide_13"
+    },
+    {
+      "predicate": {
+        "custom_model_data": 3014
+      },
+      "model": "slides:item/map_slide_14"
+    },
+    {
+      "predicate": {
+        "custom_model_data": 3015
+      },
+      "model": "slides:item/map_slide_15"
+    },
+    {
+      "predicate": {
+        "custom_model_data": 3016
+      },
+      "model": "slides:item/map_slide_16"
+    }
+  ]
+}

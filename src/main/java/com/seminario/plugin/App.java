@@ -25,6 +25,7 @@ import com.seminario.plugin.manager.SlideManager;
 import com.seminario.plugin.manager.SlideShowManager;
 import com.seminario.plugin.manager.SpawnpointManager;
 import com.seminario.plugin.manager.SurveyManager;
+import com.seminario.plugin.manager.TutorialSQLPresentationManager;
 import com.seminario.plugin.model.MenuZone;
 import com.seminario.plugin.model.SQLBattleWorld;
 import com.seminario.plugin.model.SQLDungeonWorld;
@@ -50,6 +51,7 @@ public class App extends JavaPlugin {
     private QuestManager questManager;
     private FireworkManager fireworkManager;
     private HarryNPCManager harryNPCManager;
+    private TutorialSQLPresentationManager tutorialSQLPresentationManager;
     private PlayerEventListener playerEventListener;
     private com.seminario.plugin.listener.PlayerJoinListener playerJoinListener;
     
@@ -88,6 +90,7 @@ public class App extends JavaPlugin {
         lobbyManager.setQuestManager(questManager);
         fireworkManager = new FireworkManager(this);
         harryNPCManager = new HarryNPCManager(this);
+        tutorialSQLPresentationManager = new TutorialSQLPresentationManager(this);
         
         // Clear cached slides with old format (12x9) to force regeneration to new format (16x11)
         getLogger().info("Clearing slide cache to force regeneration for 16x11 format...");
@@ -147,7 +150,7 @@ public class App extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new com.seminario.plugin.listener.WorldChangeListener(this, lobbyManager), this);
         
         // Register lobby player listener for lobby item interactions
-        getServer().getPluginManager().registerEvents(new LobbyPlayerListener(lobbyManager, spawnpointManager, this), this);
+        getServer().getPluginManager().registerEvents(new LobbyPlayerListener(lobbyManager, spawnpointManager, tutorialSQLPresentationManager, this), this);
         
         // Register survey listener for survey interactions
         getServer().getPluginManager().registerEvents(new com.seminario.plugin.listener.SurveyListener(surveyManager), this);

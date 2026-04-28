@@ -94,6 +94,10 @@ public class LobbyManager {
         // Slot 1 (index 0): Recommendations Book
         ItemStack book = createRecommendationsBook();
         player.getInventory().setItem(0, book);
+
+        // Slot 2 (index 1): Tutorial SQL presentation item
+        ItemStack tutorialItem = createTutorialSQLItem();
+        player.getInventory().setItem(1, tutorialItem);
         
         // Slot 8 (index 7): Lobby Super Jump Star
         ItemStack superJumpStar = createLobbySuperJumpStar(player);
@@ -137,6 +141,10 @@ public class LobbyManager {
         // Slot 1 (index 0): Recommendations Book
         ItemStack book = createRecommendationsBook();
         player.getInventory().setItem(0, book);
+
+        // Slot 2 (index 1): Tutorial SQL presentation item
+        ItemStack tutorialItem = createTutorialSQLItem();
+        player.getInventory().setItem(1, tutorialItem);
         
         // Slot 6 (index 5): Post-Test item (only if default survey is configured)
         if (surveyManager != null && surveyManager.hasDefaultSurvey()) {
@@ -273,6 +281,23 @@ public class LobbyManager {
             "",
             "§eClick derecho para abrir"
         ));
+
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    private ItemStack createTutorialSQLItem() {
+        ItemStack item = new ItemStack(Material.PAPER);
+        ItemMeta meta = item.getItemMeta();
+
+        meta.setDisplayName("§9§lTutorial SQL");
+        meta.setLore(java.util.Arrays.asList(
+            "§7Abre la presentación inicial",
+            "§7del tutorial SQL del servidor",
+            "",
+            "§eClick derecho para abrir"
+        ));
+        meta.setCustomModelData(3001);
 
         item.setItemMeta(meta);
         return item;

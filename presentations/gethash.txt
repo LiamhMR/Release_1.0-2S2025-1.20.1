@@ -1,0 +1,1 @@
+ Get-FileHash .\TutorialSQL_Pack.zip -Algorithm SHA1

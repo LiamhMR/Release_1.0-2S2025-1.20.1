@@ -1,21 +1,28 @@
 package com.seminario.plugin.listener;
 
+import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
+import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerItemHeldEvent;
+import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import com.seminario.plugin.manager.LobbyManager;
 import com.seminario.plugin.manager.SpawnpointManager;
+import com.seminario.plugin.manager.TutorialSQLPresentationManager;
 
 /**
  * Handles player interactions with lobby items
@@ -24,11 +31,13 @@ public class LobbyPlayerListener implements Listener {
 
     private final LobbyManager lobbyManager;
     private final SpawnpointManager spawnpointManager;
+    private final TutorialSQLPresentationManager tutorialSQLPresentationManager;
     private final JavaPlugin plugin;
 
-    public LobbyPlayerListener(LobbyManager lobbyManager, SpawnpointManager spawnpointManager, JavaPlugin plugin) {
+    public LobbyPlayerListener(LobbyManager lobbyManager, SpawnpointManager spawnpointManager, TutorialSQLPresentationManager tutorialSQLPresentationManager, JavaPlugin plugin) {
         this.lobbyManager = lobbyManager;
         this.spawnpointManager = spawnpointManager;
+        this.tutorialSQLPresentationManager = tutorialSQLPresentationManager;
         this.plugin = plugin;
     }
 
@@ -46,8 +55,26 @@ public class LobbyPlayerListener implements Listener {
             return;
         }
 
-        // Check for right-click actions
-        if (!event.getAction().name().contains("RIGHT_CLICK")) {
+        String actionName = event.getAction().name();
+        boolean isRightClick = actionName.contains("RIGHT_CLICK");
+        boolean isLeftClick = actionName.contains("LEFT_CLICK");
+
+        if (tutorialSQLPresentationManager.hasActivePresentation(player)
+                && tutorialSQLPresentationManager.isControllerItem(item)) {
+            event.setCancelled(true);
+
+            if (isRightClick) {
+                tutorialSQLPresentationManager.advanceSlide(player);
+                return;
+            }
+
+            if (isLeftClick) {
+                tutorialSQLPresentationManager.closePresentation(player);
+                return;
+            }
+        }
+
+        if (!isRightClick) {
             return;
         }
 
@@ -73,6 +100,44 @@ public class LobbyPlayerListener implements Listener {
             lobbyManager.openQuestSelector(player);
             return;
         }
+
+        if (item.getType() == Material.PAPER && displayName.contains("Tutorial SQL")) {
+            event.setCancelled(true);
+            tutorialSQLPresentationManager.openPresentation(player);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onPlayerInteractEntity(PlayerInteractEntityEvent event) {
+        Player player = event.getPlayer();
+        if (!tutorialSQLPresentationManager.hasActivePresentation(player)) {
+            return;
+        }
+
+        if (!tutorialSQLPresentationManager.isPresentationFrame(event.getRightClicked(), player)) {
+            return;
+        }
+
+        event.setCancelled(true);
+        tutorialSQLPresentationManager.advanceSlide(player);
+    }
+
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onEntityDamageByEntity(EntityDamageByEntityEvent event) {
+        if (!(event.getDamager() instanceof Player player)) {
+            return;
+        }
+
+        if (!tutorialSQLPresentationManager.hasActivePresentation(player)) {
+            return;
+        }
+
+        if (!tutorialSQLPresentationManager.isPresentationFrame(event.getEntity(), player)) {
+            return;
+        }
+
+        event.setCancelled(true);
+        tutorialSQLPresentationManager.closePresentation(player);
     }
 
     // ── Inventory protection ──────────────────────────────────────────────────
@@ -83,6 +148,7 @@ public class LobbyPlayerListener implements Listener {
     @EventHandler(priority = EventPriority.HIGH)
     public void onInventoryClick(InventoryClickEvent event) {
         if (!(event.getWhoClicked() instanceof Player player)) return;
+
         if (!lobbyManager.hasLobbyInventory(player)) return;
         if (event.getClickedInventory() == player.getInventory()) {
             event.setCancelled(true);
@@ -95,6 +161,7 @@ public class LobbyPlayerListener implements Listener {
     @EventHandler(priority = EventPriority.HIGH)
     public void onInventoryDrag(InventoryDragEvent event) {
         if (!(event.getWhoClicked() instanceof Player player)) return;
+
         if (!lobbyManager.hasLobbyInventory(player)) return;
         int topSize = event.getView().getTopInventory().getSize();
         for (int slot : event.getRawSlots()) {
@@ -114,6 +181,41 @@ public class LobbyPlayerListener implements Listener {
         if (lobbyManager.hasLobbyInventory(player)) {
             event.setCancelled(true);
         }
+    }
+
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onPlayerItemHeld(PlayerItemHeldEvent event) {
+        Player player = event.getPlayer();
+        if (!tutorialSQLPresentationManager.hasActivePresentation(player)) {
+            return;
+        }
+
+        tutorialSQLPresentationManager.handleHeldItemChange(player, event.getNewSlot());
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onPlayerMove(PlayerMoveEvent event) {
+        Player player = event.getPlayer();
+        if (!tutorialSQLPresentationManager.hasActivePresentation(player)) {
+            return;
+        }
+
+        Location from = event.getFrom();
+        Location to = event.getTo();
+        if (to == null) {
+            return;
+        }
+
+        if (from.getX() == to.getX() && from.getY() == to.getY() && from.getZ() == to.getZ()) {
+            return;
+        }
+
+        tutorialSQLPresentationManager.handlePlayerMovement(player, to);
+    }
+
+    @EventHandler
+    public void onPlayerQuit(PlayerQuitEvent event) {
+        tutorialSQLPresentationManager.clearSession(event.getPlayer());
     }
 
     // ── Lobby death handling ──────────────────────────────────────────────────
@@ -155,6 +257,7 @@ public class LobbyPlayerListener implements Listener {
 
         plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
             if (player.isOnline()) {
+                tutorialSQLPresentationManager.clearSession(player);
                 lobbyManager.giveLobbyInventoryToPlayer(player);
             }
         }, 1L);

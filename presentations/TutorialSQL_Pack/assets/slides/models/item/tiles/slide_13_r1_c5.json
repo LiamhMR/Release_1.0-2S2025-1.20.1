@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "slides:item/tiles/slide_13_r1_c5"
+  }
+}
