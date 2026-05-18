@@ -19,6 +19,7 @@ import com.seminario.plugin.listener.SQLEntryListener;
 import com.seminario.plugin.manager.AuthManager;
 import com.seminario.plugin.manager.FireworkManager;
 import com.seminario.plugin.manager.FixSlideManager;
+import com.seminario.plugin.manager.CountHologramManager;
 import com.seminario.plugin.manager.HarryNPCManager;
 import com.seminario.plugin.manager.LobbyManager;
 import com.seminario.plugin.manager.QuestManager;
@@ -55,6 +56,7 @@ public class App extends JavaPlugin {
     private FireworkManager fireworkManager;
     private AuthManager authManager;
     private HarryNPCManager harryNPCManager;
+    private CountHologramManager countHologramManager;
     private TutorialSQLPresentationManager tutorialSQLPresentationManager;
     private PlayerEventListener playerEventListener;
     private com.seminario.plugin.listener.PlayerJoinListener playerJoinListener;
@@ -95,6 +97,7 @@ public class App extends JavaPlugin {
         fireworkManager = new FireworkManager(this);
         authManager = new AuthManager(this);
         harryNPCManager = new HarryNPCManager(this);
+        countHologramManager = new CountHologramManager(this, configManager);
         tutorialSQLPresentationManager = new TutorialSQLPresentationManager(this);
         
         // Clear cached slides with old format (12x9) to force regeneration to new format (16x11)
@@ -114,6 +117,10 @@ public class App extends JavaPlugin {
         // Spawn all Harry NPCs after worlds are loaded
         getLogger().info("Spawning Harry NPCs...");
         harryNPCManager.spawnAllNPCs();
+
+        // Initialize count holograms (must be after worlds/entities are loaded)
+        com.seminario.plugin.gui.ChestportGUI.setConfigManager(configManager);
+        countHologramManager.initializeAll();
         
         // Register event listeners
         playerEventListener = new PlayerEventListener(configManager, slideShowManager, fixSlideManager, this);
@@ -130,6 +137,10 @@ public class App extends JavaPlugin {
 
         // Register SQL Battle wave listener for stage progression and wave completion
         getServer().getPluginManager().registerEvents(new SQLBattleWaveListener(sqlBattleManager, this), this);
+
+        // Register SQL Battle inventory restriction listener
+        getServer().getPluginManager().registerEvents(
+            new com.seminario.plugin.listener.BattleInventoryListener(sqlBattleManager), this);
         
         // Register SQL world listener for auto-start functionality
         getServer().getPluginManager().registerEvents(new com.seminario.plugin.listeners.SQLWorldListener(sqlDungeonManager), this);
@@ -142,6 +153,22 @@ public class App extends JavaPlugin {
         
         // Register laboratory listener for SQL experimentation
         com.seminario.plugin.listener.LaboratoryListener laboratoryListener = new com.seminario.plugin.listener.LaboratoryListener(configManager, sqlDungeonManager);
+
+        // Initialize persistent SQLBattle lab database for LABORATORY2 zones
+        com.seminario.plugin.sql.battle.BattleSQLDatabase battleLabDatabase =
+                new com.seminario.plugin.sql.battle.BattleSQLDatabase(getLogger(), "laboratory2_lab");
+        if (battleLabDatabase.initialize()) {
+            try {
+                battleLabDatabase.loadWave(1);
+                laboratoryListener.setBattleLabDatabase(battleLabDatabase);
+                getLogger().info("[SeminarioPlugin] Battle Lab database inicializada para zonas LABORATORY2");
+            } catch (Exception e) {
+                getLogger().warning("[SeminarioPlugin] No se pudo cargar la oleada del Battle Lab: " + e.getMessage());
+            }
+        } else {
+            getLogger().warning("[SeminarioPlugin] No se pudo inicializar la base de datos del Battle Lab (LABORATORY2 sin datos)");
+        }
+
         getServer().getPluginManager().registerEvents(laboratoryListener, this);
         
         // Connect laboratory listener with player event listener
@@ -178,6 +205,7 @@ public class App extends JavaPlugin {
         // Register commands
         SeminarioCommand seminarioCommand = new SeminarioCommand(configManager, slideManager, sqlDungeonManager, sqlBattleManager, spawnpointManager, lobbyManager, surveyManager, questManager, fireworkManager, harryNPCManager, authManager);
         seminarioCommand.setFixSlideManager(fixSlideManager); // Connect FixSlideManager to commands
+        seminarioCommand.setCountHologramManager(countHologramManager);
         var smCommand = getCommand("sm");
         if (smCommand != null) {
             smCommand.setExecutor(seminarioCommand);
@@ -188,6 +216,9 @@ public class App extends JavaPlugin {
 
         // Inject QuestManager into ChestportGUI for requirement validation
         com.seminario.plugin.gui.ChestportGUI.setQuestManager(questManager);
+
+        // Wire PlayerEventListener with CountHologramManager for live hologram updates
+        playerEventListener.setCountHologramManager(countHologramManager);
         AuthCommand authCommand = new AuthCommand(authManager, spawnpointManager, lobbyManager, this);
         var registerCommand = getCommand("register");
         if (registerCommand != null) {
@@ -317,5 +348,9 @@ public class App extends JavaPlugin {
      */
     public PlayerEventListener getPlayerEventListener() {
         return playerEventListener;
+    }
+
+    public CountHologramManager getCountHologramManager() {
+        return countHologramManager;
     }
 }
